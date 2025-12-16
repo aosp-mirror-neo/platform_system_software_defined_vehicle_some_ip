@@ -1,0 +1,8 @@
+{
+  "serialization_config": {
+    "endianness": "BigEndian",
+    "string_type": "UTF_8",
+    "len_field_size": "ZeroBytes"
+  },
+  "dt_polling_interval_ms": 100
+}

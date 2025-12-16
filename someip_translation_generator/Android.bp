@@ -1,0 +1,79 @@
+// Copyright (C) 2026 The Android Open Source Project
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+    default_team: "trendy_team_automotive",
+}
+
+rust_defaults {
+    name: "someip_translation_generator_defaults",
+    defaults: ["sdv@rust_defaults"],
+    crate_root: "src/main.rs",
+    srcs: ["**/*.tpl"],
+    rustlibs: [
+        "libvsidl_v1_parser",
+        "libvsidl_v1_proto_rs",
+        "libanyhow",
+        "libchrono",
+        "libclap",
+        "libprotobuf",
+        "libprotobuf_parse",
+        "libprettyplease",
+        "libformatter",
+        "libsomeip_config",
+        "libsomeip_serde_reflect",
+        "libtinytemplate",
+    ],
+    proc_macros: ["libserde_derive"],
+}
+
+rust_binary_host {
+    name: "someip_translation_generator",
+    crate_name: "someip_translation_generator",
+    defaults: [
+        "someip_translation_generator_defaults",
+    ],
+    // rust_binary_host Soong target are build for both build-host and target-host
+    // However, someip_translation_generator is only supposed to be used on build host.
+    // The following flag disable cross arch build, which means if build-host and target-host
+    // have different architecture someip_translation_generator will only be on build-host
+    // Note: This is required by libprettyplease.
+    host_cross_supported: false,
+}
+
+rust_test_host {
+    name: "sdv_core_core_services_unit_someip_translation_generator_test",
+    defaults: ["someip_translation_generator_defaults"],
+    test_options: {
+        unit_test: true,
+    },
+    rustlibs: [
+        "libgoogletest_rust",
+        "libtempfile",
+    ],
+    test_suites: [
+        "general-tests",
+        "automotive-sdv-tests",
+    ],
+    data: [
+        "tests/**/*",
+    ],
+    // rust_test_host Soong target are build for both build-host and target-host
+    // However, someip_translation_generator is only supposed to be used on build host.
+    // The following flag disable cross arch build, which means if build-host and target-host
+    // have different architecture someip_translation_generator will only be on build-host
+    // Note: This is required by libprettyplease.
+    host_cross_supported: false,
+}

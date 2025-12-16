@@ -1,0 +1,92 @@
+# Copyright (C) 2026 The Android Open Source Project
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# proto-file: //system/software_defined_vehicle/core_services/vsidl/protos/sdv/someip/v1/someip.proto
+# proto-message: SomeIpMapping
+
+package: "com.sdv.google.sample.someip"
+
+some_ip_mapping {
+  someip_service_mapping {
+    someip_service_id: 0x5100
+    version_major: 0x1
+    version_minor: 0x0
+    instance {
+      instance_id: 0x1000
+      sdv_service_unit_parameterization {key: 0 value: "com-sdv-google-sample-someip-cuj26-some-ip-payload-unique"}
+    }
+    instance_impl {
+      offered_event {
+        group_id: 0x9510
+        event_id: 0x8510
+        simple_event {
+          sdv_unit_type {
+            package_name: "com.sdv.google.sample.someip"
+            service_bundle_name: "ServiceBundleCuj26"
+            type_name: "Cuj26SomeIpPayload"
+          }
+          service_unit: 0
+          type_definition {
+            length_field_size: ZERO
+            field {
+              field_name: "value"
+              field_type {
+                someip_string {
+                  length_field_size: ONE
+                  string_encoding: UTF_8
+                }
+              }
+            }
+            field {
+              field_name: "load"
+              field_type {
+                someip_array{
+                  length_field_size: FOUR
+                  array_type { someip_primitive: UINT8 }
+                }
+              }
+            }
+            field {
+              field_name: "repeated_values"
+              field_type {
+                someip_array {
+                  length_field_size: ONE
+                  array_type {
+                    someip_string {
+                      length_field_size: ONE
+                      string_encoding: UTF_8
+                    }
+                  }
+                }
+              }
+            }
+            field {
+              field_name: "repeated_bytes"
+              field_type {
+                someip_array {
+                  length_field_size: ONE
+                  array_type {
+                    someip_array{
+                      length_field_size: FOUR
+                      array_type { someip_primitive: UINT8 }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

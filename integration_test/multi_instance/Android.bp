@@ -1,0 +1,47 @@
+// Copyright (C) 2026 The Android Open Source Project
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+    default_team: "trendy_team_automotive",
+}
+
+rust_test {
+    name: "sdv_core_core_services_integration_someip_multi_instance_test",
+    test_suites: [
+        "automotive-sdv-tests",
+        "general-tests",
+    ],
+    srcs: ["src/main.rs"],
+    rustlibs: [
+        "libsdv_mw_rs_com_sdv_google_sample_someip_side_mirror_test_client",
+        "libsomeip_messages_catalog",
+        "libsdv_rs",
+        "libsdv_comms_rs",
+        "libprotobuf",
+        "libsdv_someip_integration_test",
+        "libfutures",
+        "liblog_rust",
+        "libsdv_log_rust",
+        "libtokio",
+        "libgoogletest_rust",
+    ],
+    test_options: {
+        unit_test: false,
+    },
+    ld_flags: ["-Wl,--no-as-needed"],
+    product_specific: true,
+    require_root: true,
+    test_config_template: ":sdv_authz_enforcement_flag_enabled_config_template",
+}

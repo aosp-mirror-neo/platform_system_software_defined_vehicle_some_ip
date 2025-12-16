@@ -1,0 +1,77 @@
+// Copyright (C) 2026 The Android Open Source Project
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package sdv.known_types;
+
+import "complex.proto";
+
+message FlattenedStruct {
+  uint32 aa_f1 = 1;  // u8
+  repeated CommonEnum aa_f2 = 2;
+
+  uint32 ab_f1 = 3;  // u8
+  uint32 ab_f2 = 4;  // u8
+  uint32 ab_f3 = 5;  // u8
+
+  CommonEnum a_f3 = 6;
+  CommonEnum a_f4 = 7;
+
+  uint32 a_f5 = 8;
+  uint32 a_f6 = 9;  // u8
+
+  CommonEnum a_f7 = 10;
+
+  repeated ACFlattened a_f8 = 11;
+}
+
+message ACFlattened {
+  repeated float aca_f1 = 1;
+  float aca_f2 = 2;
+  repeated float aca_f3 = 3;
+  CommonEnum aca_f4 = 4;
+  float aca_f5 = 5;
+
+  uint32 acb_f1 = 6;
+  uint32 acb_f2 = 7;
+  uint32 acb_f3 = 8;  // u8
+  uint32 acb_f4 = 9;
+  uint32 acb_f5 = 10;  // u8
+  CommonEnum acb_f6 = 11;
+  repeated ACBA acb_f7 = 12;
+
+  repeated float acc_f1 = 13;
+  repeated float acc_f2 = 14;
+  float acc_f3 = 15;
+  repeated float acc_f4 = 16;
+  repeated float acc_f5 = 17;
+  float acc_f6 = 18;
+  CommonEnum acc_f7 = 19;
+
+  uint32 acd_f1 = 20;  // u8
+  CommonEnum acd_f2 = 21;
+  repeated ACDA acd_f3 = 22;
+
+  repeated float ace_f1 = 23;
+  repeated float ace_f2 = 24;
+
+  float acf_f1 = 25;
+
+  uint32 acg_f1 = 26;  // u8
+  repeated ACGA acg_f2 = 27;
+
+  CommonEnum ach_f1 = 28;
+  repeated float ach_f2 = 29;
+}
