@@ -1,0 +1,115 @@
+{
+  "unicast": "192.168.98.3",
+  "logging":
+      {
+        "level": "debug",
+        "console": "true",
+        "dlt": "false",
+        "version":
+            {
+              "enable": "false"
+            }
+      },
+  "applications":
+      [
+        {
+          "name": "SampleStack",
+          "id": "0x1221"
+        }
+      ],
+  "services":
+      [
+        {
+          "service": "0x0010",
+          "instance": "0x0001",
+          "reliable": {
+            "port": "5700",
+            "enable-magic-cookies": "false"
+          },
+          "unreliable": "5701"
+        },
+        {
+          "service": "0x0012",
+          "instance": "0x0001",
+          "reliable": {
+            "port": "5706",
+            "enable-magic-cookies": "false"
+          },
+          "unreliable": "5707"
+        },
+        {
+          "service": "0x29",
+          "instance": "0x1",
+          "reliable": {
+            "port": "5710",
+            "enable-magic-cookies": "false"
+          },
+          "unreliable": "5711"
+        },
+        {
+          "service": "0x2321",
+          "instance": "0x0001",
+          "reliable": {
+            "port": "5702",
+            "enable-magic-cookies": "false"
+          },
+          "unreliable": "5703"
+        },
+        {
+          "service": "0x4450",
+          "instance": "0x1",
+          "reliable": {
+            "port": "5704",
+            "enable-magic-cookies": "false"
+          },
+          "unreliable": "5705"
+        },
+        {
+          "service": "0x4450",
+          "instance": "0x2",
+          "reliable": {
+            "port": "5708",
+            "enable-magic-cookies": "false"
+          },
+          "unreliable": "5709"
+        },
+        {
+          "service": "0x3450",
+          "instance": "0x1",
+          "reliable": {
+            "port": "5834",
+            "enable-magic-cookies": "false"
+          },
+          "unreliable": "5835"
+        },
+        {
+          "service": "0x48",
+          "instance": "0x1",
+          "reliable": {
+            "port": "5720",
+            "enable-magic-cookies": "false"
+          },
+          "unreliable": "5721"
+        },
+        {
+          "service": "0x49",
+          "instance": "0x1",
+          "reliable": {
+            "port": "5722",
+            "enable-magic-cookies": "false"
+          },
+          "unreliable": "5723"
+        }
+      ],
+  "routing": "SampleStack",
+  "service-discovery":
+      {
+        "enable": "true",
+        "multicast": "224.0.0.0",
+        "port": "30490",
+        "protocol": "udp",
+        "ttl": 3,
+        "cyclic_offer_delay": "2000",
+        "request_response_delay": "1500"
+      }
+}

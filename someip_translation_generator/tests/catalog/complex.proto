@@ -1,0 +1,136 @@
+// Copyright (C) 2026 The Android Open Source Project
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package sdv.known_types;
+
+message DeepNestedStruct {
+  A data = 1;
+}
+
+message A {
+  AA a_f1 = 1;
+  AB a_f2 = 2;
+  CommonEnum a_f3 = 3;
+  CommonEnum a_f4 = 4;
+  uint32 a_f5 = 5;
+  uint32 a_f6 = 6;  // u8
+  CommonEnum a_f7 = 7;
+  repeated AC a_f8 = 8;
+}
+
+message AB {
+  uint32 ab_f1 = 1;  // u8
+  uint32 ab_f2 = 2;  // u8
+  uint32 ab_f3 = 3;  // u8
+}
+
+message AA {
+  uint32 aa_f1 = 1;  // u8
+  repeated CommonEnum aa_f2 = 2;
+}
+
+enum CommonEnum {
+  V0 = 0;
+  V1 = 1;
+  V2 = 2;
+  V3 = 3;
+  V4 = 4;
+  V5 = 5;
+  V6 = 6;
+  V7 = 7;
+  V8 = 8;
+  V9 = 9;
+}
+
+message AC {
+  ACA ac_f1 = 1;
+  ACB ac_f2 = 2;
+  ACC ac_f3 = 3;
+  ACD ac_f4 = 4;
+  ACE ac_f5 = 5;
+  ACF ac_f6 = 6;
+  ACG ac_f7 = 7;
+  ACH ac_f8 = 8;
+}
+
+message ACB {
+  uint32 acb_f1 = 1;
+  uint32 acb_f2 = 2;
+  uint32 acb_f3 = 3;  // u8
+  uint32 acb_f4 = 4;
+  uint32 acb_f5 = 5;  // u8
+  CommonEnum acb_f6 = 6;
+  repeated ACBA acb_f7 = 7;
+}
+
+message ACD {
+  uint32 acd_f1 = 1;  // u8
+  CommonEnum acd_f2 = 2;
+  repeated ACDA acd_f3 = 3;
+}
+
+message ACDA {
+  CommonEnum acda_f1 = 1;
+  uint32 acda_f2 = 2;  // u8
+}
+
+message ACBA {
+  uint32 acba_f1 = 1;
+  uint32 acba_f2 = 2;
+  CommonEnum acba_f3 = 3;
+}
+
+message ACA {
+  repeated float aca_f1 = 1;
+  float aca_f2 = 2;
+  repeated float aca_f3 = 3;
+  CommonEnum aca_f4 = 4;
+  float aca_f5 = 5;
+}
+
+message ACE {
+  repeated float ace_f1 = 1;
+  repeated float ace_f2 = 2;
+}
+
+message ACC {
+  repeated float acc_f1 = 1;
+  repeated float acc_f2 = 2;
+  float acc_f3 = 3;
+  repeated float acc_f4 = 4;
+  repeated float acc_f5 = 5;
+  float acc_f6 = 6;
+  CommonEnum acc_f7 = 7;
+}
+
+message ACG {
+  uint32 acg_f1 = 1;  // u8
+  repeated ACGA acg_f2 = 2;
+}
+
+message ACGA {
+  CommonEnum acga_f1 = 1;
+  CommonEnum acga_f2 = 2;
+}
+
+message ACH {
+  CommonEnum ach_f1 = 1;
+  repeated float ach_f2 = 2;
+}
+
+message ACF {
+  float acf_f1 = 1;
+}

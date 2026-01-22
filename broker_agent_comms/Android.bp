@@ -1,0 +1,121 @@
+// Copyright (C) 2026 The Android Open Source Project
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package {
+    default_team: "trendy_team_automotive",
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
+rust_defaults {
+    name: "sdv_someip_broker_agent_comms@rust_defaults",
+    defaults: [
+        "sdv@rust_defaults",
+        "sdv_tracing@rust_defaults",
+    ],
+    rustlibs: [
+        "libanyhow",
+        "libmockall",
+        "libvsidl_v1_proto_rs",
+        // Helper library that contains init_logger(), which redirects
+        // logs to the Android system logger. init_logger() should be called in
+        // executables only.
+        "libsdv_log_rust",
+        // Provides macros used for logging (info!, warn!, etc.). Use
+        // in all Rust code.
+        "libbyteorder",
+        "libserde",
+        "libserde_json",
+        "librustutils",
+        "liblog_rust",
+        "libtokio",
+        "libtokio_stream",
+        "libtokio_util",
+        "libsomeip_serde",
+        "libsomeip_serde_reflect",
+        "libdashmap",
+        "libsomeip_config",
+        "libbinder_tokio_rs",
+        "libbinder_rs",
+        "libsdv_status_rs",
+        "libsdv_comms_rs",
+        "libsdv_comms_ctx_impl",
+        "libsdv_config_provider",
+        "libsdv_proto_reflection_rs",
+        "libprotobuf",
+        "libthiserror",
+        "libsdv_vsidl_common",
+        "google.sdv.someip-V2-rust",
+        "libsdv_comms_bindgen",
+        "libfutures_executor",
+        "libbytemuck",
+        "libsdv_dump",
+        "libnum_cpus",
+        "liblazy_static",
+        "libsdv_wire_format",
+        "google.sdv.someip_load_indicators-V1-rust",
+    ],
+    proc_macros: [
+        "libasync_trait",
+    ],
+    srcs: ["src/main.rs"],
+    ld_flags: ["-Wl,--no-as-needed"],
+    system_ext_specific: true,
+}
+
+rust_binary {
+    name: "sdv_someip_broker_agent_comms",
+    defaults: ["sdv_someip_broker_agent_comms@rust_defaults"],
+    vintf_fragments: [":sdv_someip_broker_agent_vintf_fragments"],
+    // Static linking rlibs to avoid symbol conflicts
+    prefer_rlib: true,
+}
+
+rust_protobuf {
+    name: "libsdv_core_core_services_unit_someip_broker_test_test_protos",
+    crate_name: "sdv_core_core_services_unit_someip_broker_test_test_protos",
+    protos: [
+        "**/*.proto",
+    ],
+    source_stem: "sdv_core_core_services_unit_someip_broker_test_test_protos_source",
+    proto_flags: [
+        "-I external/protobuf/src",
+    ],
+    vendor_available: true,
+    product_available: true,
+    min_sdk_version: "35",
+}
+
+rust_test {
+    name: "sdv_core_core_services_unit_someip_broker_test",
+    defaults: ["sdv_someip_broker_agent_comms@rust_defaults"],
+    test_options: {
+        unit_test: true,
+    },
+    rustlibs: [
+        "libgoogletest_rust",
+        "libsdv_core_core_services_unit_someip_broker_test_test_protos",
+    ],
+    test_suites: [
+        "automotive-sdv-tests",
+        "general-tests",
+    ],
+    require_root: true,
+    test_config_template: ":sdv_authz_enforcement_flag_enabled_config_template",
+}
+
+prebuilt_etc {
+    name: "broker_config.json",
+    sub_dir: "someip",
+    src: "config/broker_config.json",
+}

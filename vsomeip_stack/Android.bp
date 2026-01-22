@@ -1,0 +1,58 @@
+// Copyright (C) 2026 The Android Open Source Project
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
+cc_defaults {
+    name: "vsomeip_stack_defaults",
+    host_supported: false,
+    shared_libs: [
+        "libutils",
+        "libbinder_ndk",
+        "libvsomeip3",
+        "libvsomeip3-cfg",
+        "libvsomeip3-sd",
+        "liblog",
+        "libbase",
+        "libsdv_log",
+        "google.sdv.someip-V2-ndk",
+        "google.sdv.someip_load_indicators-V1-ndk",
+    ],
+    cflags: [
+        "-Wall",
+        "-Werror",
+        "-Wunused",
+        "-Wunused-parameter",
+    ],
+    vendor: true,
+}
+
+cc_binary {
+    name: "sdv_someip_stack_agent",
+    defaults: ["vsomeip_stack_defaults"],
+    srcs: [
+        "src/agent.cpp",
+        "src/stack.cpp",
+    ],
+    vintf_fragments: [":sdv_someip_stack_agent_vintf_fragments"],
+}
+
+prebuilt_etc {
+    name: "vsomeip_config.json",
+    sub_dir: "someip",
+    src: "vsomeip_config.json",
+    vendor: true,
+}

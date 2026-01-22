@@ -1,0 +1,139 @@
+// Copyright (C) 2026 The Android Open Source Project
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package com.sdv.test;
+
+message TestMessage {
+  double a = 1;
+  string b = 2;
+  SimpleTestMessage c = 3;
+}
+
+message SimpleTestMessage {
+  uint64 a = 1;
+  double b = 2;
+  uint32 c = 3;  // u8
+}
+
+message ComplexTestMessage {
+  Data a = 1;
+}
+
+message ArrayTestMessage {
+  repeated int32 repeated_field = 1;
+}
+
+message Data {
+  A a = 1;
+  uint32 b = 2;  // u8
+  C c = 3;
+  uint32 d = 4;
+  uint32 e = 5;  // u8
+  uint32 f = 6;  // u8
+  uint32 g = 7;  // u8
+  repeated H h = 8;
+}
+
+message A {
+  uint32 a = 1;  // u8
+  uint32 b = 2;  // u8
+  uint32 c = 3;  // u8
+}
+
+message C {
+  uint32 a = 1;           // u8
+  repeated uint32 b = 2;  // u8
+}
+
+message H {
+  HA a = 1;
+  HB b = 2;
+  HC c = 3;
+  HD d = 4;
+  HE e = 5;
+  HF f = 6;
+  HG g = 7;
+  HH h = 8;
+}
+
+message HA {
+  uint32 a = 1;
+  uint32 b = 2;
+  uint32 c = 3;
+  uint32 d = 4;  // u8
+  uint32 e = 5;  // u8
+  uint32 f = 6;  // u8
+  repeated HAG g = 7;
+}
+
+message HAG {
+  uint32 a = 1;
+  uint32 b = 2;
+  uint32 c = 3;  // u8
+}
+
+message HB {
+  uint32 a = 1;  // u8
+  uint32 b = 2;  // u8
+  repeated HBC c = 3;
+}
+
+message HBC {
+  uint32 a = 1;  // u8
+  uint32 b = 2;  // u8
+}
+
+message HC {
+  uint32 a = 1;  // u8
+  repeated float b = 2;
+  repeated float c = 3;
+  float d = 4;
+  float e = 5;
+}
+
+message HD {
+  repeated float a = 1;
+  repeated float b = 2;
+}
+
+message HE {
+  repeated float a = 1;
+  repeated float b = 2;
+  repeated float c = 3;
+  repeated float d = 4;
+  float e = 5;
+  float f = 6;
+  uint32 g = 7;  // u8
+}
+
+message HF {
+  uint32 a = 1;  // u8
+  repeated HFB b = 2;
+}
+
+message HFB {
+  uint32 a = 1;  // u8
+  uint32 b = 2;  // u8
+}
+
+message HG {
+  uint32 a = 1;  // u8
+  repeated float b = 2;
+}
+
+message HH {
+  float a = 1;
+}

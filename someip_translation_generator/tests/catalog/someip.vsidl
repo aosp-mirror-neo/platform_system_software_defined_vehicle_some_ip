@@ -1,0 +1,707 @@
+# Copyright (C) 2026 The Android Open Source Project
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# proto-file: //system/software_defined_vehicle/core_services/vsidl/protos/sdv/someip/v1/someip.proto
+# proto-message: SomeIpMapping
+
+package: "sdv.known_types"
+
+some_ip_mapping {
+  someip_service_mapping {
+    someip_service_id: 0x6100
+    version_major: 0x1
+    version_minor: 0x0
+    instance {
+      instance_id: 0x1000
+      sdv_service_unit_parameterization {key: 2 value: "com-sdv-someip-deep-nested-struct-unique"}
+      sdv_service_unit_parameterization {key: 3 value: "com-sdv-someip-flattened-struct-unique"}
+    }
+    instance_impl {
+      offered_event {
+        group_id: 0x9611
+        event_id: 0x8611
+        simple_event {
+          sdv_unit_type {
+            package_name: "sdv.known_types"
+            service_bundle_name: "SomeIpBroker"
+            type_name: "DeepNestedStruct"
+          }
+          service_unit: 2
+          type_definition {
+              field {
+                field_name: "data"
+                field_type {
+                  someip_struct {
+                    field {
+                      field_name: "a_f1"
+                      field_type {
+                        someip_struct {
+                          field {
+                            field_name: "aa_f1"
+                            field_type { someip_primitive: UINT8 }
+                          }
+                          field {
+                            field_name: "aa_f2"
+                            field_type {
+                              someip_array {
+                                # Max count is 31
+                                length_field_size: ONE
+                                array_type { someip_primitive: UINT8 }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                    field {
+                      field_name: "a_f2"
+                      field_type {
+                        someip_struct {
+                          field {
+                            field_name: "ab_f1"
+                            field_type { someip_primitive: UINT8 }
+                          }
+                          field {
+                            field_name: "ab_f2"
+                            field_type { someip_primitive: UINT8 }
+                          }
+                          field {
+                            field_name: "ab_f3"
+                            field_type { someip_primitive: UINT8 }
+                          }
+                        }
+                      }
+                    }
+                    field {
+                      field_name: "a_f3"
+                      field_type { someip_primitive: UINT8 }
+                    }
+                    field {
+                      field_name: "a_f4"
+                      field_type { someip_primitive: UINT8 }
+                    }
+                    field {
+                      field_name: "a_f5"
+                      field_type { someip_primitive: UINT32 }
+                    }
+                    field {
+                      field_name: "a_f6"
+                      field_type { someip_primitive: UINT8 }
+                    }
+                    field {
+                      field_name: "a_f7"
+                      field_type { someip_primitive: UINT8 }
+                    }
+                    field {
+                      field_name: "a_f8"
+                      field_type {
+                        someip_array {
+                          # Max count is 64
+                          length_field_size: ONE
+                          array_type {
+                            someip_struct {
+                              field {
+                                field_name: "ac_f1"
+                                field_type {
+                                  someip_struct {
+                                    field {
+                                      field_name: "aca_f1"
+                                      field_type {
+                                        # Max count is 6, fixed
+                                        someip_array {
+                                          length_field_size: ONE
+                                          array_type { someip_primitive: FLOAT32 }
+                                        }
+                                       }
+                                    }
+                                    field {
+                                      field_name: "aca_f2"
+                                      field_type { someip_primitive: FLOAT32 }
+                                    }
+                                    field {
+                                      field_name: "aca_f3"
+                                      field_type {
+                                        # Max count is 6, fixed
+                                        someip_array {
+                                          length_field_size: ONE
+                                          array_type { someip_primitive: FLOAT32 }
+                                        }
+                                      }
+                                    }
+                                    field {
+                                      field_name: "aca_f4"
+                                      field_type { someip_primitive: UINT8 }
+                                    }
+                                    field {
+                                      field_name: "aca_f5"
+                                      field_type { someip_primitive: FLOAT32 }
+                                    }
+                                  }
+                                }
+                              }
+                              field {
+                                field_name: "ac_f2"
+                                field_type {
+                                  someip_struct {
+                                    field {
+                                      field_name: "acb_f1"
+                                      field_type { someip_primitive: UINT32 }
+                                    }
+                                    field {
+                                      field_name: "acb_f2"
+                                      field_type { someip_primitive: UINT32 }
+                                    }
+                                    field {
+                                      field_name: "acb_f3"
+                                      field_type { someip_primitive: UINT8 }
+                                    }
+                                    field {
+                                      field_name: "acb_f4"
+                                      field_type { someip_primitive: UINT32 }
+                                    }
+                                    field {
+                                      field_name: "acb_f5"
+                                      field_type { someip_primitive: UINT8 }
+                                    }
+                                    field {
+                                      field_name: "acb_f6"
+                                      field_type { someip_primitive: UINT8 }
+                                    }
+                                    field {
+                                      field_name: "acb_f7"
+                                      field_type {
+                                        someip_array {
+                                          # Max count is 12
+                                          length_field_size: ONE
+                                          array_type {
+                                            someip_struct {
+                                              field {
+                                                field_name: "acba_f1"
+                                                field_type { someip_primitive: UINT32 }
+                                              }
+                                              field {
+                                                field_name: "acba_f2"
+                                                field_type { someip_primitive: UINT32 }
+                                              }
+                                              field {
+                                                field_name: "acba_f3"
+                                                field_type { someip_primitive: UINT8 }
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                              field {
+                                field_name: "ac_f3"
+                                field_type {
+                                  someip_struct {
+                                    field {
+                                      field_name: "acc_f1"
+                                      field_type {
+                                        # Max count is 2, fixed
+                                        someip_array {
+                                          length_field_size: ONE
+                                          array_type { someip_primitive: FLOAT32 }
+                                        }
+                                      }
+                                    }
+                                    field {
+                                      field_name: "acc_f2"
+                                      field_type {
+                                        # Max count is 3, fixed
+                                        someip_array {
+                                          length_field_size: ONE
+                                          array_type { someip_primitive: FLOAT32 }
+                                        }
+                                      }
+                                    }
+                                    field {
+                                      field_name: "acc_f3"
+                                      field_type { someip_primitive: FLOAT32 }
+                                    }
+                                    field {
+                                      field_name: "acc_f4"
+                                      field_type {
+                                        # Max count is 2, fixed
+                                        someip_array {
+                                          length_field_size: ONE
+                                          array_type { someip_primitive: FLOAT32 }
+                                        }
+                                      }
+                                    }
+                                    field {
+                                      field_name: "acc_f5"
+                                      field_type {
+                                        # Max count is 3, fixed
+                                        someip_array {
+                                          length_field_size: ONE
+                                          array_type { someip_primitive: FLOAT32 }
+                                        }
+                                      }
+                                    }
+                                    field {
+                                      field_name: "acc_f6"
+                                      field_type { someip_primitive: FLOAT32 }
+                                    }
+                                    field {
+                                      field_name: "acc_f7"
+                                      field_type { someip_primitive: UINT8 }
+                                    }
+                                  }
+                                }
+                              }
+                              field {
+                                field_name: "ac_f4"
+                                field_type {
+                                  someip_struct {
+                                    field {
+                                      field_name: "acd_f1"
+                                      field_type { someip_primitive: UINT8 }
+                                    }
+                                    field {
+                                      field_name: "acd_f2"
+                                      field_type { someip_primitive: UINT8 }
+                                    }
+                                    field {
+                                      field_name: "acd_f3"
+                                      field_type {
+                                        someip_array {
+                                          # Max count is 10
+                                          length_field_size: ONE
+                                          array_type {
+                                            someip_struct {
+                                              field {
+                                                field_name: "acda_f1"
+                                                field_type { someip_primitive: UINT8 }
+                                              }
+                                              field {
+                                                field_name: "acda_f2"
+                                                field_type { someip_primitive: UINT8 }
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                              field {
+                                field_name: "ac_f5"
+                                field_type {
+                                  someip_struct {
+                                    field {
+                                      field_name: "ace_f1"
+                                      field_type {
+                                        # Max count is 3, fixed
+                                        someip_array {
+                                          length_field_size: ONE
+                                          array_type { someip_primitive: FLOAT32 }
+                                        }
+                                      }
+                                    }
+                                    field {
+                                      field_name: "ace_f2"
+                                      field_type {
+                                        # Max count is 3, fixed
+                                        someip_array {
+                                          length_field_size: ONE
+                                          array_type { someip_primitive: FLOAT32 }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                              field {
+                                field_name: "ac_f6"
+                                field_type {
+                                  someip_struct {
+                                    field {
+                                      field_name: "acf_f1"
+                                      field_type { someip_primitive: FLOAT32 }
+                                    }
+                                  }
+                                }
+                              }
+                              field {
+                                field_name: "ac_f7"
+                                field_type {
+                                  someip_struct {
+                                    field {
+                                      field_name: "acg_f1"
+                                      field_type { someip_primitive: UINT8 }
+                                    }
+                                    field {
+                                      field_name: "acg_f2"
+                                      field_type {
+                                        someip_array {
+                                          # Max size 4, fixed
+                                          length_field_size: ONE
+                                          array_type {
+                                            someip_struct {
+                                              field {
+                                                field_name: "acga_f1"
+                                                field_type { someip_primitive: UINT8 }
+                                              }
+                                              field {
+                                                field_name: "acga_f2"
+                                                field_type { someip_primitive: UINT8 }
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                              field {
+                                field_name: "ac_f8"
+                                field_type {
+                                  someip_struct {
+                                    field {
+                                      field_name: "ach_f1"
+                                      field_type { someip_primitive: UINT8 }
+                                    }
+                                    field {
+                                      field_name: "ach_f2"
+                                      field_type {
+                                        someip_array {
+                                          # Max size 2, fixed
+                                          length_field_size: ONE
+                                          array_type { someip_primitive: FLOAT32 }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+          }
+        }
+      }
+    }
+    instance_impl {
+      offered_event {
+        group_id: 0x9612
+        event_id: 0x8612
+        simple_event {
+          sdv_unit_type {
+            package_name: "sdv.known_types"
+            service_bundle_name: "SomeIpBroker"
+            type_name: "FlattenedStruct"
+          }
+          service_unit: 3
+          type_definition {
+                  field {
+                    field_name: "aa_f1"
+                    field_type { someip_primitive: UINT8 }
+                  }
+                  field {
+                    field_name: "aa_f2"
+                    field_type {
+                      someip_array {
+                        # Max count is 31
+                        length_field_size: ONE
+                        array_type { someip_primitive: UINT8 }
+                      }
+                    }
+                  }
+                  field {
+                    field_name: "ab_f1"
+                    field_type { someip_primitive: UINT8 }
+                  }
+                  field {
+                    field_name: "ab_f2"
+                    field_type { someip_primitive: UINT8 }
+                  }
+                  field {
+                    field_name: "ab_f3"
+                    field_type { someip_primitive: UINT8 }
+                  }
+                  field {
+                    field_name: "a_f3"
+                    field_type { someip_primitive: UINT8 }
+                  }
+                  field {
+                    field_name: "a_f4"
+                    field_type { someip_primitive: UINT8 }
+                  }
+                  field {
+                    field_name: "a_f5"
+                    field_type { someip_primitive: UINT32 }
+                  }
+                  field {
+                    field_name: "a_f6"
+                    field_type { someip_primitive: UINT8 }
+                  }
+                  field {
+                    field_name: "a_f7"
+                    field_type { someip_primitive: UINT8 }
+                  }
+                  field {
+                    field_name: "a_f8"
+                    field_type {
+                      someip_array {
+                        # Max count is 64
+                        length_field_size: ONE
+                        array_type {
+                          someip_struct {
+                              field {
+                                field_name: "aca_f1"
+                                field_type {
+                                  # Max count is 6, fixed
+                                  someip_array {
+                                    length_field_size: ONE
+                                    array_type { someip_primitive: FLOAT32 }
+                                  }
+                                }
+                              }
+                              field {
+                                field_name: "aca_f2"
+                                field_type { someip_primitive: FLOAT32 }
+                              }
+                              field {
+                                field_name: "aca_f3"
+                                field_type {
+                                  # Max count is 6, fixed
+                                  someip_array {
+                                    length_field_size: ONE
+                                    array_type { someip_primitive: FLOAT32 }
+                                  }
+                                }
+                              }
+                              field {
+                                field_name: "aca_f4"
+                                field_type { someip_primitive: UINT8 }
+                              }
+                              field {
+                                field_name: "aca_f5"
+                                field_type { someip_primitive: FLOAT32 }
+                              }
+                              field {
+                                field_name: "acb_f1"
+                                field_type { someip_primitive: UINT32 }
+                              }
+                              field {
+                                field_name: "acb_f2"
+                                field_type { someip_primitive: UINT32 }
+                              }
+                              field {
+                                field_name: "acb_f3"
+                                field_type { someip_primitive: UINT8 }
+                              }
+                              field {
+                                field_name: "acb_f4"
+                                field_type { someip_primitive: UINT32 }
+                              }
+                              field {
+                                field_name: "acb_f5"
+                                field_type { someip_primitive: UINT8 }
+                              }
+                              field {
+                                field_name: "acb_f6"
+                                field_type { someip_primitive: UINT8 }
+                              }
+                              field {
+                                field_name: "acb_f7"
+                                field_type {
+                                  someip_array {
+                                    # Max count is 12
+                                    length_field_size: ONE
+                                    array_type {
+                                      someip_struct {
+                                        field {
+                                          field_name: "acba_f1"
+                                          field_type { someip_primitive: UINT32 }
+                                        }
+                                        field {
+                                          field_name: "acba_f2"
+                                          field_type { someip_primitive: UINT32 }
+                                        }
+                                        field {
+                                          field_name: "acba_f3"
+                                          field_type { someip_primitive: UINT8 }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                              field {
+                                field_name: "acc_f1"
+                                field_type {
+                                  # Max count is 2, fixed
+                                  someip_array {
+                                    length_field_size: ONE
+                                    array_type { someip_primitive: FLOAT32 }
+                                  }
+                                }
+                              }
+                              field {
+                                field_name: "acc_f2"
+                                field_type {
+                                  # Max count is 3, fixed
+                                  someip_array {
+                                    length_field_size: ONE
+                                    array_type { someip_primitive: FLOAT32 }
+                                  }
+                                }
+                              }
+                              field {
+                                field_name: "acc_f3"
+                                field_type { someip_primitive: FLOAT32 }
+                              }
+                              field {
+                                field_name: "acc_f4"
+                                field_type {
+                                  # Max count is 2, fixed
+                                  someip_array {
+                                    length_field_size: ONE
+                                    array_type { someip_primitive: FLOAT32 }
+                                  }
+                                }
+                              }
+                              field {
+                                field_name: "acc_f5"
+                                field_type {
+                                  # Max count is 3, fixed
+                                  someip_array {
+                                    length_field_size: ONE
+                                    array_type { someip_primitive: FLOAT32 }
+                                  }
+                                }
+                              }
+                              field {
+                                field_name: "acc_f6"
+                                field_type { someip_primitive: FLOAT32 }
+                              }
+                              field {
+                                field_name: "acc_f7"
+                                field_type { someip_primitive: UINT8 }
+                              }
+                              field {
+                                field_name: "acd_f1"
+                                field_type { someip_primitive: UINT8 }
+                              }
+                              field {
+                                field_name: "acd_f2"
+                                field_type { someip_primitive: UINT8 }
+                              }
+                              field {
+                                field_name: "acd_f3"
+                                field_type {
+                                  someip_array {
+                                    # Max count is 10
+                                    length_field_size: ONE
+                                    array_type {
+                                      someip_struct {
+                                        field {
+                                          field_name: "acda_f1"
+                                          field_type { someip_primitive: UINT8 }
+                                        }
+                                        field {
+                                          field_name: "acda_f2"
+                                          field_type { someip_primitive: UINT8 }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                              field {
+                                field_name: "ace_f1"
+                                field_type {
+                                  # Max count is 3, fixed
+                                  someip_array {
+                                    length_field_size: ONE
+                                    array_type { someip_primitive: FLOAT32 }
+                                  }
+                                }
+                              }
+                              field {
+                                field_name: "ace_f2"
+                                field_type {
+                                  # Max count is 3, fixed
+                                  someip_array {
+                                    length_field_size: ONE
+                                    array_type { someip_primitive: FLOAT32 }
+                                  }
+                                }
+                              }
+                              field {
+                                field_name: "acf_f1"
+                                field_type { someip_primitive: FLOAT32 }
+                              }
+                              field {
+                                field_name: "acg_f1"
+                                field_type { someip_primitive: UINT8 }
+                              }
+                              field {
+                                field_name: "acg_f2"
+                                field_type {
+                                  someip_array {
+                                    # Max size 4, fixed
+                                    length_field_size: ONE
+                                    array_type {
+                                      someip_struct {
+                                        field {
+                                          field_name: "acga_f1"
+                                          field_type { someip_primitive: UINT8 }
+                                        }
+                                        field {
+                                          field_name: "acga_f2"
+                                          field_type { someip_primitive: UINT8 }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                              field {
+                                field_name: "ach_f1"
+                                field_type { someip_primitive: UINT8 }
+                              }
+                              field {
+                                field_name: "ach_f2"
+                                field_type {
+                                  someip_array {
+                                    # Max size 2, fixed
+                                    length_field_size: ONE
+                                    array_type { someip_primitive: FLOAT32 }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
