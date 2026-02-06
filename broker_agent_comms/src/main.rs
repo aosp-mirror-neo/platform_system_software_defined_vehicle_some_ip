@@ -105,7 +105,7 @@ async fn run_broker_agent() -> anyhow::Result<()> {
     let broker_mapping = mapping_parser.parse_mappings(mappings);
 
     let dm = DumpBinderConnection::initialize(DUMP_REPORT_TITLE, BINDER_TAG);
-    dm.set_self_fqin(&broker_fqin);
+    dm.set_self_fqin(broker_fqin.to_string());
     let benchmark_dumpsys =
         Arc::new(BenchmarkDumpsys::<UnitType>::new(SOMEIP_REPORT_WINDOW_DELTA_T));
     dm.add_reporter("SOME/IP Broker Translation Benchmark", &benchmark_dumpsys);
