@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use sdv_comms::id::ServiceFqin;
-use sdv_config_provider::vsidl_provider_api::{PublicationDescriptor, VsidlConfigProviderV1};
+use sdv_config_provider::vsidl_provider_api::{PublicationDescriptor, VsidlConfigProvider};
 
 use crate::agent::protocol_mapping::MessageTranslationMode;
 use crate::agent::protocol_mapping::ProtocolMapping;
@@ -90,7 +90,7 @@ impl SomeIpDescriptorStore {
     pub(crate) async fn create(
         protocol_mapping: &ProtocolMapping,
         type_mapping: &TypeMapping,
-        config_provider: &dyn VsidlConfigProviderV1,
+        config_provider: &dyn VsidlConfigProvider,
         broker_fqin: &ServiceFqin,
     ) -> Self {
         let mut publication_by_unit_type = HashMap::new();
@@ -121,7 +121,7 @@ impl SomeIpDescriptorStore {
 
     async fn process_sdv_service_units(
         sdv_service_units: &[SdvServiceUnitMapping],
-        config_provider: &dyn VsidlConfigProviderV1,
+        config_provider: &dyn VsidlConfigProvider,
         type_mapping: &TypeMapping,
         broker_fqin: &ServiceFqin,
         descriptor_store: &mut SomeIpDescriptorStore,
@@ -129,20 +129,23 @@ impl SomeIpDescriptorStore {
         for service_unit in sdv_service_units.iter() {
             if let SdvServiceUnitInterface::RPC(rpc_infos) = &service_unit.service_unit_interface {
                 for rpc_info in rpc_infos.iter() {
-                    let Some(rpc_descriptor) = config_provider
+                    let rpc_descriptor = match config_provider
                         .get_rpc_method_descriptor(
                             broker_fqin,
                             &service_unit.service_unit_info.unit_type,
                             &rpc_info.sdv_method_name,
                         )
                         .await
-                    else {
-                        log::error!(
-                            "Unable to build fetch rpc descriptor for unit type {:?} and method {:?}",
-                            service_unit.service_unit_info.unit_type,
-                            rpc_info.sdv_method_name
-                        );
-                        continue;
+                    {
+                        Ok(descriptor) => descriptor,
+                        Err(e) => {
+                            log::error!(
+                                    "Unable to build fetch rpc descriptor for unit type {:?} and method {:?}: {e}",
+                                    service_unit.service_unit_info.unit_type,
+                                    rpc_info.sdv_method_name
+                                );
+                            continue;
+                        }
                     };
 
                     let id = SomeIpDescriptorId::new_method_id(
@@ -186,7 +189,7 @@ impl SomeIpDescriptorStore {
         type_mapping: &TypeMapping,
         publication_by_unit_type: &mut HashMap<UnitType, Arc<PublicationDescriptor>>,
         rpc_by_unit_type: &mut HashMap<(UnitType, String), Arc<RpcMethodDescriptor>>,
-        config_provider: &dyn VsidlConfigProviderV1,
+        config_provider: &dyn VsidlConfigProvider,
         broker_fqin: &ServiceFqin,
         descriptor_store: &mut SomeIpDescriptorStore,
     ) {
@@ -223,7 +226,7 @@ impl SomeIpDescriptorStore {
         someip_service: &SomeIpService,
         type_mapping: &TypeMapping,
         rpc_by_unit_type: &mut HashMap<(UnitType, String), Arc<RpcMethodDescriptor>>,
-        config_provider: &dyn VsidlConfigProviderV1,
+        config_provider: &dyn VsidlConfigProvider,
         broker_fqin: &ServiceFqin,
         descriptor_store: &mut SomeIpDescriptorStore,
     ) {
@@ -280,7 +283,7 @@ impl SomeIpDescriptorStore {
         someip_service: &SomeIpService,
         type_mapping: &TypeMapping,
         publication_by_unit_type: &mut HashMap<UnitType, Arc<PublicationDescriptor>>,
-        config_provider: &dyn VsidlConfigProviderV1,
+        config_provider: &dyn VsidlConfigProvider,
         broker_fqin: &ServiceFqin,
         descriptor_store: &mut SomeIpDescriptorStore,
     ) {
@@ -412,7 +415,7 @@ impl SomeIpDescriptorStore {
 
     async fn fetch_rpc_descriptor(
         rpc_by_unit_type: &mut HashMap<(UnitType, String), Arc<RpcMethodDescriptor>>,
-        config_provider: &dyn VsidlConfigProviderV1,
+        config_provider: &dyn VsidlConfigProvider,
         broker_fqin: &ServiceFqin,
         unit_type: &UnitType,
         method_name: String,
@@ -420,7 +423,7 @@ impl SomeIpDescriptorStore {
         match rpc_by_unit_type.get(&(unit_type.clone(), method_name.clone())) {
             Some(rpc_descriptor) => Some(rpc_descriptor.clone()),
             None => {
-                if let Some(descriptor) = config_provider
+                if let Ok(descriptor) = config_provider
                     .get_rpc_method_descriptor(broker_fqin, unit_type, &method_name)
                     .await
                 {
@@ -437,14 +440,14 @@ impl SomeIpDescriptorStore {
 
     async fn fetch_descriptor(
         publication_by_unit_type: &mut HashMap<UnitType, Arc<PublicationDescriptor>>,
-        config_provider: &dyn VsidlConfigProviderV1,
+        config_provider: &dyn VsidlConfigProvider,
         broker_fqin: &ServiceFqin,
         unit_type: &UnitType,
     ) -> Option<Arc<PublicationDescriptor>> {
         match publication_by_unit_type.get(unit_type) {
             Some(publication_descriptor) => Some(publication_descriptor.clone()),
             None => {
-                if let Some(descriptor) =
+                if let Ok(descriptor) =
                     config_provider.get_publication_descriptor(broker_fqin, unit_type).await
                 {
                     let value = Arc::new(descriptor);
@@ -477,9 +480,10 @@ mod tests {
     use sdv_comms::id::ServiceFqin;
     use sdv_comms::sd::UnitType;
     use sdv_config_provider::vsidl_provider_api::{
-        MockVsidlConfigProviderV1, PublicationDescriptor, SizeMetadata,
+        MockVsidlConfigProvider, PublicationDescriptor, SizeMetadata,
     };
     use sdv_core_core_services_unit_someip_broker_test_test_protos::message::SimpleTestMessage;
+    use sdv_status_rs::{SdvStatus, SdvStatusCode};
     use someip_config::broker_params::SdMinorVersionMode;
     use someip_config::serde_config::ffi::LenFieldSize;
     use someip_serde_reflect::{
@@ -584,8 +588,11 @@ mod tests {
         let service_instance =
             create_test_service_instance(100, 1, 0, 200, 300, simple_event_mapping);
 
-        let mut vsidl_provider = MockVsidlConfigProviderV1::new();
-        vsidl_provider.expect_get_publication_descriptor().times(1).returning(|_, _| None);
+        let mut vsidl_provider = MockVsidlConfigProvider::new();
+        vsidl_provider
+            .expect_get_publication_descriptor()
+            .times(1)
+            .returning(|_, _| Err(SdvStatus::new(SdvStatusCode::NotFound)));
 
         let broker_fqin = ServiceFqin::builder()
             .sdv_vm_name("instance1")
@@ -632,16 +639,16 @@ mod tests {
         );
 
         let message_size = 25;
-        let mut vsidl_provider = MockVsidlConfigProviderV1::new();
+        let mut vsidl_provider = MockVsidlConfigProvider::new();
         let publication_descriptor = PublicationDescriptor {
             message_descriptor: SimpleTestMessage::descriptor(),
             size_metadata: SizeMetadata { message_size, ..Default::default() },
         };
         vsidl_provider.expect_get_publication_descriptor().times(1).returning(move |_, ut| {
             if *ut == unit_type {
-                Some(publication_descriptor.clone())
+                Ok(publication_descriptor.clone())
             } else {
-                None
+                Err(SdvStatus::new(SdvStatusCode::NotFound))
             }
         });
 
@@ -698,16 +705,16 @@ mod tests {
         );
 
         let message_size = 25;
-        let mut vsidl_provider = MockVsidlConfigProviderV1::new();
+        let mut vsidl_provider = MockVsidlConfigProvider::new();
         let publication_descriptor = PublicationDescriptor {
             message_descriptor: SimpleTestMessage::descriptor(),
             size_metadata: SizeMetadata { message_size, ..Default::default() },
         };
         vsidl_provider.expect_get_publication_descriptor().times(1).returning(move |_, ut| {
             if *ut == unit_type {
-                Some(publication_descriptor.clone())
+                Ok(publication_descriptor.clone())
             } else {
-                None
+                Err(SdvStatus::new(SdvStatusCode::NotFound))
             }
         });
 
@@ -798,7 +805,7 @@ mod tests {
         let service_instance =
             create_test_service_instance(100, 1, 0, 200, 300, group_event_mapping);
 
-        let mut vsidl_provider = MockVsidlConfigProviderV1::new();
+        let mut vsidl_provider = MockVsidlConfigProvider::new();
         let publication_descriptor1 = PublicationDescriptor {
             message_descriptor: SimpleTestMessage::descriptor(),
             size_metadata: SizeMetadata { message_size: 10, ..Default::default() },
@@ -812,11 +819,11 @@ mod tests {
         let pd2_clone = publication_descriptor2.clone();
         vsidl_provider.expect_get_publication_descriptor().times(2).returning(move |_, ut| {
             if *ut == unit_type1 {
-                Some(pd1_clone.clone())
+                Ok(pd1_clone.clone())
             } else if *ut == unit_type2 {
-                Some(pd2_clone.clone())
+                Ok(pd2_clone.clone())
             } else {
-                None
+                Err(SdvStatus::new(SdvStatusCode::NotFound))
             }
         });
 
@@ -873,8 +880,11 @@ mod tests {
         let service_instance =
             create_test_service_instance(100, 1, 0, 200, 300, group_event_mapping);
 
-        let mut vsidl_provider = MockVsidlConfigProviderV1::new();
-        vsidl_provider.expect_get_publication_descriptor().times(1).returning(|_, _| None);
+        let mut vsidl_provider = MockVsidlConfigProvider::new();
+        vsidl_provider
+            .expect_get_publication_descriptor()
+            .times(1)
+            .returning(|_, _| Err(SdvStatus::new(SdvStatusCode::NotFound)));
 
         let broker_fqin = ServiceFqin::builder()
             .sdv_vm_name("instance1")
@@ -953,9 +963,9 @@ mod tests {
         );
         type_mapping.rpc_type_mapping.insert(unit_type.clone(), rpc_method_map);
 
-        let mut config_provider = MockVsidlConfigProviderV1::new();
+        let mut config_provider = MockVsidlConfigProvider::new();
         config_provider.expect_get_rpc_method_descriptor().returning(move |_, _, _| {
-            Some(RpcMethodDescriptor {
+            Ok(RpcMethodDescriptor {
                 request_message: None,
                 response_message: Some(SimpleTestMessage::descriptor()),
             })
@@ -1043,9 +1053,9 @@ mod tests {
         );
         type_mapping.rpc_type_mapping.insert(unit_type.clone(), rpc_method_map);
 
-        let mut config_provider = MockVsidlConfigProviderV1::new();
+        let mut config_provider = MockVsidlConfigProvider::new();
         config_provider.expect_get_rpc_method_descriptor().returning(move |_, _, _| {
-            Some(RpcMethodDescriptor {
+            Ok(RpcMethodDescriptor {
                 request_message: Some(SimpleTestMessage::descriptor()),
                 response_message: None,
             })
