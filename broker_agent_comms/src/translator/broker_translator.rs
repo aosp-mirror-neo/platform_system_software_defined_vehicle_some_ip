@@ -18,7 +18,7 @@ use mockall::automock;
 use protobuf::reflect::MessageDescriptor;
 use sdv_comms::id::ServiceFqin;
 use sdv_comms::sd::UnitType;
-use sdv_config_provider::vsidl_provider_api::VsidlConfigProviderV1;
+use sdv_config_provider::vsidl_provider_api::VsidlConfigProvider;
 use sdv_vsidl_common::proto_size_utils::compute_length_size;
 use sdv_vsidl_common::proto_size_utils::compute_message_length_including_header;
 use someip_config::serde_config::ffi::SomeIpConfig;
@@ -86,7 +86,7 @@ pub(crate) trait IBrokerTranslator: Send + Sync {
 }
 
 pub(crate) struct BrokerTranslator<B: ByteOrder + Send + Sync> {
-    config_provider: Box<dyn VsidlConfigProviderV1 + Send + Sync>,
+    config_provider: Box<dyn VsidlConfigProvider + Send + Sync>,
     descriptor_store: SomeIpDescriptorStore,
     type_mapping: TypeMapping,
     someip_config: SomeIpConfig,
@@ -96,7 +96,7 @@ pub(crate) struct BrokerTranslator<B: ByteOrder + Send + Sync> {
 
 impl<B: ByteOrder + Send + Sync> BrokerTranslator<B> {
     pub(crate) fn new(
-        config_provider: Box<dyn VsidlConfigProviderV1 + Send + Sync>,
+        config_provider: Box<dyn VsidlConfigProvider + Send + Sync>,
         descriptor_store: SomeIpDescriptorStore,
         type_mapping: TypeMapping,
         someip_config: SomeIpConfig,
@@ -321,7 +321,7 @@ impl<B: ByteOrder + Send + Sync> IBrokerTranslator for BrokerTranslator<B> {
                     .config_provider
                     .get_publication_descriptor(service_fqin, unit_type)
                     .await
-                    .ok_or(TranslationError::ConfigProviderError)?;
+                    .map_err(|_| TranslationError::ConfigProviderError)?;
 
                 let someip_type_mapping =
                     self.get_someip_definition(unit_type, translation_mode)?;
@@ -354,7 +354,7 @@ impl<B: ByteOrder + Send + Sync> IBrokerTranslator for BrokerTranslator<B> {
                     .config_provider
                     .get_rpc_method_descriptor(service_fqin, unit_type, method)
                     .await
-                    .ok_or(TranslationError::ConfigProviderError)?;
+                    .map_err(|_| TranslationError::ConfigProviderError)?;
                 let someip_type_mapping =
                     self.get_someip_definition(unit_type, translation_mode)?;
                 let someip_message_definition = someip_type_mapping.type_mapping();
@@ -370,7 +370,7 @@ impl<B: ByteOrder + Send + Sync> IBrokerTranslator for BrokerTranslator<B> {
                     .config_provider
                     .get_rpc_method_descriptor(service_fqin, unit_type, method)
                     .await
-                    .ok_or(TranslationError::ConfigProviderError)?;
+                    .map_err(|_| TranslationError::ConfigProviderError)?;
                 let someip_type_mapping =
                     self.get_someip_definition(unit_type, translation_mode)?;
                 let someip_message_definition = someip_type_mapping.type_mapping();
@@ -393,7 +393,7 @@ impl<B: ByteOrder + Send + Sync> IBrokerTranslator for BrokerTranslator<B> {
             .config_provider
             .get_publication_descriptor(service_fqin, unit_type)
             .await
-            .ok_or(TranslationError::ConfigProviderError)?;
+            .map_err(|_| TranslationError::ConfigProviderError)?;
 
         Ok((topic_metadata.size_metadata.message_size, topic_metadata.size_metadata.message_count))
     }
@@ -414,7 +414,7 @@ pub mod tests {
     use sdv_comms::sd::UnitType;
     use sdv_config_provider::vsidl_provider;
     use sdv_config_provider::vsidl_provider_api::{
-        MockVsidlConfigProviderV1, PublicationDescriptor, RpcMethodDescriptor, SizeMetadata,
+        MockVsidlConfigProvider, PublicationDescriptor, RpcMethodDescriptor, SizeMetadata,
     };
     use sdv_vsidl_common::proto_size_utils::compute_message_length_including_header;
     use someip_config::broker_params::SdMinorVersionMode;
@@ -521,12 +521,12 @@ pub mod tests {
             .build()
             .expect("Unit Type should be created");
 
-        let mut config_provider = MockVsidlConfigProviderV1::new();
+        let mut config_provider = MockVsidlConfigProvider::new();
         config_provider
             .expect_get_publication_descriptor()
             .with(eq(service_fqin.clone()), eq(unit_type.clone()))
             .times(1)
-            .returning(move |_, _| Some(publication_descriptor.clone()));
+            .returning(move |_, _| Ok(publication_descriptor.clone()));
 
         let mut type_mapping = TypeMapping::default();
 
@@ -617,12 +617,12 @@ pub mod tests {
             .build()
             .expect("Unit Type should be created");
 
-        let mut config_provider = MockVsidlConfigProviderV1::new();
+        let mut config_provider = MockVsidlConfigProvider::new();
         config_provider
             .expect_get_publication_descriptor()
             .with(eq(service_fqin.clone()), eq(unit_type.clone()))
             .times(1)
-            .returning(move |_, _| Some(publication_descriptor.clone()));
+            .returning(move |_, _| Ok(publication_descriptor.clone()));
 
         let mut type_mapping = TypeMapping::default();
 
@@ -748,7 +748,7 @@ pub mod tests {
 
         let (service_fqin, unit_type) = create_test_fqin_and_unit_type();
 
-        let mut config_provider = MockVsidlConfigProviderV1::new();
+        let mut config_provider = MockVsidlConfigProvider::new();
         let mut type_mapping = TypeMapping::default();
 
         let someip_type_mapping_instance = SomeIpTypeMapping::with_mode(
@@ -768,7 +768,7 @@ pub mod tests {
             .expect_get_publication_descriptor()
             .with(eq(service_fqin.clone()), eq(unit_type.clone()))
             .times(1)
-            .returning(move |_, _| Some(publication_descriptor.clone()));
+            .returning(move |_, _| Ok(publication_descriptor.clone()));
         type_mapping
             .topic_type_mapping
             .insert(unit_type.clone(), someip_type_mapping_instance.clone());
@@ -831,7 +831,7 @@ pub mod tests {
 
         let (service_fqin, unit_type) = create_test_fqin_and_unit_type();
 
-        let mut config_provider = MockVsidlConfigProviderV1::new();
+        let mut config_provider = MockVsidlConfigProvider::new();
         let mut type_mapping = TypeMapping::default();
 
         let someip_type_mapping_instance = SomeIpTypeMapping::with_mode(
@@ -851,7 +851,7 @@ pub mod tests {
             .expect_get_publication_descriptor()
             .with(eq(service_fqin.clone()), eq(unit_type.clone()))
             .times(1)
-            .returning(move |_, _| Some(publication_descriptor.clone()));
+            .returning(move |_, _| Ok(publication_descriptor.clone()));
         type_mapping
             .topic_type_mapping
             .insert(unit_type.clone(), someip_type_mapping_instance.clone());
@@ -913,7 +913,7 @@ pub mod tests {
 
         let (service_fqin, unit_type) = create_test_fqin_and_unit_type();
 
-        let mut config_provider = MockVsidlConfigProviderV1::new();
+        let mut config_provider = MockVsidlConfigProvider::new();
         let mut type_mapping = TypeMapping::default();
 
         let someip_type_mapping_instance = SomeIpTypeMapping::with_mode(
@@ -929,7 +929,7 @@ pub mod tests {
             .expect_get_rpc_method_descriptor()
             .with(eq(service_fqin.clone()), eq(unit_type.clone()), eq(method_name.clone()))
             .times(1)
-            .returning(move |_, _, _| Some(rpc_method_descriptor.clone()));
+            .returning(move |_, _, _| Ok(rpc_method_descriptor.clone()));
 
         let mut rpc_method_map = HashMap::new();
         rpc_method_map.insert(
@@ -1313,7 +1313,7 @@ pub mod tests {
         let sdv_publication_size = 20;
 
         // --- Mock VsidlConfigProvider to return a descriptor for the event part ---
-        let mut config_provider = MockVsidlConfigProviderV1::new();
+        let mut config_provider = MockVsidlConfigProvider::new();
         let size_metadata = SizeMetadata {
             message_size: sdv_publication_size,
             message_count: 1,
@@ -1321,7 +1321,7 @@ pub mod tests {
         };
 
         config_provider.expect_get_publication_descriptor().returning(move |_, _| {
-            Some(PublicationDescriptor {
+            Ok(PublicationDescriptor {
                 message_descriptor: SimpleTestMessage::descriptor(),
                 size_metadata: size_metadata.clone(),
             })
@@ -1407,12 +1407,12 @@ pub mod tests {
             .build()
             .expect("Unit Type should be created");
 
-        let mut config_provider = MockVsidlConfigProviderV1::new();
+        let mut config_provider = MockVsidlConfigProvider::new();
         config_provider
             .expect_get_rpc_method_descriptor()
             .with(eq(service_fqin.clone()), eq(unit_type.clone()), eq(method_name.clone()))
             .times(2)
-            .returning(move |_, _, _| Some(rpc_method_descriptor.clone()));
+            .returning(move |_, _, _| Ok(rpc_method_descriptor.clone()));
 
         let mut type_mapping = TypeMapping::default();
 
@@ -1523,12 +1523,12 @@ pub mod tests {
             .build()
             .expect("Unit Type should be created");
 
-        let mut config_provider = MockVsidlConfigProviderV1::new();
+        let mut config_provider = MockVsidlConfigProvider::new();
         config_provider
             .expect_get_publication_descriptor()
             .with(eq(service_fqin.clone()), eq(unit_type.clone()))
             .times(2)
-            .returning(move |_, _| Some(publication_descriptor.clone()));
+            .returning(move |_, _| Ok(publication_descriptor.clone()));
 
         let mut type_mapping = TypeMapping::default();
 

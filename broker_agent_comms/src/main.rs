@@ -33,7 +33,7 @@ use std::time::Duration;
 use anyhow::bail;
 use sdv_comms::id::ServiceFqin;
 use sdv_comms::sd::UnitType;
-use sdv_config_provider::{vsidl_provider, vsidl_provider_api::VsidlConfigProviderV1};
+use sdv_config_provider::{vsidl_provider, vsidl_provider_api::VsidlConfigProvider};
 use sdv_dump::DumpBinderConnection;
 use someip_config::broker_params::SdMinorVersionMode;
 use someip_config::serde_config::ffi::{Endianness, SomeIpConfig};
@@ -98,10 +98,9 @@ async fn run_broker_agent() -> anyhow::Result<()> {
 
     let vsidl_provider = vsidl_provider::new_for_someip_broker_agent();
 
-    let mappings = vsidl_provider
-        .get_someip_mappings(&broker_fqin)
-        .await
-        .ok_or(anyhow::anyhow!("Error getting vsidl provider mappings for {broker_fqin:?}"))?;
+    let mappings = vsidl_provider.get_someip_mappings(&broker_fqin).await.map_err(|e| {
+        anyhow::anyhow!("Error getting vsidl provider mappings for {broker_fqin:?}: {e}")
+    })?;
     let broker_mapping = mapping_parser.parse_mappings(mappings);
 
     let dm = DumpBinderConnection::initialize(DUMP_REPORT_TITLE, BINDER_TAG);
@@ -170,7 +169,7 @@ fn create_mapping_parser(
 }
 
 fn create_translator(
-    vsidl_provider: Box<dyn VsidlConfigProviderV1 + Send + Sync>,
+    vsidl_provider: Box<dyn VsidlConfigProvider + Send + Sync>,
     descriptor_store: SomeIpDescriptorStore,
     type_mapping: TypeMapping,
     someip_config: SomeIpConfig,
