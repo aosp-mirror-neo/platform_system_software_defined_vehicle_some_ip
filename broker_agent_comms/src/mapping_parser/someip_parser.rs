@@ -83,16 +83,19 @@ impl SomeIpServiceMappingParser {
                 };
                 match implementation {
                     SomeIpInterfaceType::OfferedInterface(rpc) => {
-                        let Some(sdv_service_unit_name) =
-                            instance.sdv_service_unit_parameterization.get(&rpc.service_unit)
-                        else {
+                        let Some(channel) = Self::get_service_unit_from_sdv_or_soa(
+                            &instance.sdv_service_unit_parameterization.get(&rpc.service_unit),
+                            &rpc.channel,
+                            someip_service.service_id,
+                            None,
+                        ) else {
                             error!("Error processing a SOME/IP RPC interface implementation, unknown service unit key {} for service ID {}, instance ID {}", &rpc.service_unit, someip_service.service_id, someip_service.instance_id);
                             continue;
                         };
                         if let Some(rpc_mapping) = self.process_someip_rpc(
                             someip_service.service_id,
                             rpc,
-                            sdv_service_unit_name,
+                            &channel,
                             type_mapping,
                         ) {
                             rpc_infos.push(rpc_mapping);
@@ -133,12 +136,13 @@ impl SomeIpServiceMappingParser {
         &self,
         service_id: u16,
         rpc_interface: &SomeIpRpcInterface,
-        service_unit_name: &str,
+        channel: &str,
         type_mapping: &mut TypeMapping,
     ) -> Option<SomeIpRpcMappingInfo> {
         let builder = UnitType::builder();
         let Ok(unit_type) = builder
             .set_sdv_package_name(&rpc_interface.sdv_unit_type.package_name)
+            // TODO: b/491427479 - remove this setter, service_bundle_name is deprecated
             .set_service_bundle_name(&rpc_interface.sdv_unit_type.service_bundle_name)
             .set_unit_type_name(&rpc_interface.sdv_unit_type.type_name)
             .build()
@@ -201,7 +205,7 @@ impl SomeIpServiceMappingParser {
 
         SomeIpRpcMappingInfo {
             broker_service_unit: BrokerServiceUnit {
-                service_unit_name: service_unit_name.to_string(),
+                service_unit_name: channel.to_string(),
                 unit_type,
             },
             rpc_method_infos,
@@ -276,6 +280,36 @@ impl SomeIpServiceMappingParser {
             .unwrap_or(MessageTranslationMode::Reflection)
     }
 
+    fn get_service_unit_from_sdv_or_soa(
+        sdv_service_unit_name: &Option<&String>,
+        soa_identifier: &str,
+        service_id: u16,
+        event_id: Option<u16>,
+    ) -> Option<String> {
+        match (sdv_service_unit_name.is_some(), !soa_identifier.is_empty()) {
+            // Exactly one is defined - Success case
+            (true, false) => (*sdv_service_unit_name).cloned(),
+            // Exactly one is defined - Success case
+            (false, true) => Some(soa_identifier.to_owned()),
+            // Both are defined - Error case
+            (true, true) => {
+                error!(
+                    "Error processing a SOME/IP event implementation. Ambiguous configuration: both sdv_service_unit_name and soa_identifier are defined for Service ID {}, Event ID {:?}",
+                    service_id, event_id
+                );
+                None
+            }
+            // Neither is defined - Error case
+            (false, false) => {
+                error!(
+                    "Error processing a SOME/IP event implementation. Missing configuration: neither sdv_service_unit_name nor soa_identifier is defined for Service ID {}, Event ID {:?}",
+                    service_id, event_id
+                );
+                None
+            }
+        }
+    }
+
     fn process_someip_simple_event(
         &self,
         service_id: u16,
@@ -285,15 +319,16 @@ impl SomeIpServiceMappingParser {
         someip_simple_event: &SimpleEvent,
         type_mapping: &mut TypeMapping,
     ) -> Option<SomeIpEventMappingInfo> {
-        let Some(sdv_service_unit_name) =
-            instance.sdv_service_unit_parameterization.get(&someip_simple_event.service_unit)
-        else {
-            error!("Error processing a SOME/IP event implementation, unknown service unit key {} for service ID {}, event ID {}", &someip_simple_event.service_unit, service_id, event_id);
-            return None;
-        };
+        let service_unit_name = Self::get_service_unit_from_sdv_or_soa(
+            &instance.sdv_service_unit_parameterization.get(&someip_simple_event.service_unit),
+            &someip_simple_event.topic,
+            service_id,
+            Some(event_id),
+        )?;
         let builder = UnitType::builder();
         let Ok(unit_type) = builder
             .set_sdv_package_name(&someip_simple_event.sdv_unit_type.package_name)
+            // TODO: b/491427479 - remove this setter, service_bundle_name is deprecated
             .set_service_bundle_name(&someip_simple_event.sdv_unit_type.service_bundle_name)
             .set_unit_type_name(&someip_simple_event.sdv_unit_type.type_name)
             .build()
@@ -314,10 +349,7 @@ impl SomeIpServiceMappingParser {
                     event_id,
                     eventgroup_id,
                     event_mapping_type: SomeIpEventMappingType::SIMPLE(Box::new(
-                        BrokerServiceUnit {
-                            service_unit_name: sdv_service_unit_name.to_string(),
-                            unit_type,
-                        },
+                        BrokerServiceUnit { service_unit_name, unit_type },
                     )),
                 }
                 .into()
@@ -343,6 +375,7 @@ impl SomeIpServiceMappingParser {
             let builder = UnitType::builder();
             let Ok(unit_type) = builder
                 .set_sdv_package_name(&part.sdv_unit_type.package_name)
+                // TODO: b/491427479 - remove this setter, service_bundle_name is deprecated
                 .set_service_bundle_name(&part.sdv_unit_type.service_bundle_name)
                 .set_unit_type_name(&part.sdv_unit_type.type_name)
                 .build()
@@ -351,18 +384,17 @@ impl SomeIpServiceMappingParser {
                 return None;
             };
 
-            let Some(sdv_service_unit_name) =
-                instance.sdv_service_unit_parameterization.get(&part.service_unit)
-            else {
-                error!("Error processing a SOME/IP event implementation, unknown service unit key {} for service ID {}, event ID {}", &part.service_unit, service_id, event_id);
+            let Some(service_unit_name) = Self::get_service_unit_from_sdv_or_soa(
+                &instance.sdv_service_unit_parameterization.get(&part.service_unit),
+                &part.topic,
+                service_id,
+                Some(event_id),
+            ) else {
                 all_parts_parsed = false;
                 break;
             };
             group_event_infos.push((
-                BrokerServiceUnit {
-                    service_unit_name: sdv_service_unit_name.to_string(),
-                    unit_type,
-                },
+                BrokerServiceUnit { service_unit_name, unit_type },
                 part.field_name_mapping.clone(),
             ));
         }
@@ -459,6 +491,7 @@ mod tests {
         unit_type_bundle: &str,
         unit_type_name: &str,
         service_unit: u32,
+        channel: &str,
         method: Vec<RequestResponseMethod>,
     ) -> SomeIpInterfaceType {
         SomeIpInterfaceType::OfferedInterface(RpcInterface {
@@ -470,6 +503,7 @@ mod tests {
             })
             .into(),
             service_unit,
+            channel: channel.to_string(),
             method,
             ..Default::default()
         })
@@ -490,6 +524,7 @@ mod tests {
         unit_type_bundle: &str,
         unit_type_name: &str,
         service_unit: u32,
+        topic: &str,
     ) -> SomeIpInterfaceType {
         SomeIpInterfaceType::OfferedEvent(Event {
             group_id: group_id as u32,
@@ -503,6 +538,7 @@ mod tests {
                 })
                 .into(),
                 service_unit,
+                topic: topic.to_string(),
                 ..Default::default()
             })
             .into(),
@@ -516,10 +552,10 @@ mod tests {
         unit_type_package: &str,
         unit_type_bundle: &str,
         unit_type_name: &str,
-        group_event_infos: Vec<(u32, HashMap<String, String>)>,
+        group_event_infos: Vec<(u32, &str, HashMap<String, String>)>,
     ) -> SomeIpInterfaceType {
         let mut event_part = Vec::new();
-        for (service_unit, field_name_mapping) in group_event_infos {
+        for (service_unit, topic, field_name_mapping) in group_event_infos {
             event_part.push(GroupEventPart {
                 sdv_unit_type: Some(vsidl_v1::someip::some_ip_mapping::UnitType {
                     package_name: unit_type_package.to_string(),
@@ -529,6 +565,7 @@ mod tests {
                 })
                 .into(),
                 service_unit,
+                topic: topic.to_string(),
                 field_name_mapping,
                 ..Default::default()
             })
@@ -572,6 +609,104 @@ mod tests {
             unit_type_bundle,
             unit_type_name,
             service_unit_key,
+            /* topic */ "",
+        );
+        someip_service_mapping.instance_impl.push(SomeIpInstanceImplementation {
+            interface_type: Some(event),
+            ..Default::default()
+        });
+
+        let someip_service_parser = SomeIpServiceMappingParser::new(DEFAULT_SOMEIP_CONFIG);
+        let someip_service_instance_mappings = someip_service_parser
+            .process_someip_service_mapping(
+                &someip_service_mapping,
+                &mut TypeMapping::default(),
+                SdMinorVersionMode::ExactOrAnyMinorVersion,
+            );
+
+        let expected_service = SomeIpService {
+            service_id,
+            instance_id,
+            version: SomeIpServiceVersion {
+                major: version_major as i8,
+                minor: version_minor as i32,
+            },
+        };
+
+        assert_eq!(someip_service_instance_mappings.len(), 1);
+
+        assert_eq!(
+            someip_service_instance_mappings[0]
+                .someip_service_instance_info
+                .someip_service_instance,
+            expected_service
+        );
+        assert_eq!(someip_service_instance_mappings[0].event_infos.len(), 1);
+
+        let SomeIpEventMappingType::SIMPLE(broker_service_unit) =
+            &someip_service_instance_mappings[0].event_infos[0].event_mapping_type
+        else {
+            panic!("Expected Simple event mapping type");
+        };
+        let package = broker_service_unit.unit_type.get_sdv_package_name();
+        let bundle = broker_service_unit.unit_type.get_service_bundle_name();
+        let typename = broker_service_unit.unit_type.get_unit_type_name();
+        assert_eq!(broker_service_unit.service_unit_name, service_unit_name.to_string());
+        assert_eq!(
+            (package, bundle, typename),
+            (unit_type_package, "" /* deprecated */, unit_type_name)
+        );
+    }
+
+    // The resulting ProtoBuf message will look like this:
+    // {
+    //   someip_service_id: 2
+    //   version_major: 1
+    //   version_minor: 2
+    //   instance: [{
+    //     instance_id: 1
+    //     sdv_service_unit_parameterization: {}
+    //   }]
+    //   instance_impl: [{
+    //      group_id: 1
+    //      event_id: 2
+    //      event_type: SimpleEvent({
+    //          sdv_unit_type: { package_name: "sdv.test_package", ... }
+    //          service_unit: 42
+    //          topic: "test_service_unit"
+    //      })
+    //   }]
+    // }
+    #[test]
+    fn process_someip_service_mapping_detects_someip_soa_event_successfully() {
+        let service_id = 2;
+        let version_major = 1;
+        let version_minor = 2;
+
+        let mut someip_service_mapping =
+            create_someip_service_mapping(service_id, version_major, version_minor);
+
+        let instance_id = 1;
+        let not_existing_service_unit_key = 42;
+        let service_unit_name = "test_service_unit";
+        let parameterization = HashMap::new();
+
+        add_someip_instance_mapping(instance_id, parameterization, &mut someip_service_mapping);
+
+        let group_id: u16 = 1;
+        let event_id: u16 = 2;
+        let unit_type_package = "sdv.test_package";
+        let unit_type_bundle = "TestBundle";
+        let unit_type_name = "TestUnitType";
+
+        let event = create_simple_event(
+            group_id,
+            event_id,
+            unit_type_package,
+            unit_type_bundle,
+            unit_type_name,
+            not_existing_service_unit_key,
+            /* topic */ service_unit_name,
         );
         someip_service_mapping.instance_impl.push(SomeIpInstanceImplementation {
             interface_type: Some(event),
@@ -652,6 +787,7 @@ mod tests {
             vec![
                 (
                     service_unit_key1,
+                    /* topic */ "",
                     HashMap::from([
                         ("field1_a".to_string(), "field1".to_string()),
                         ("field2_a".to_string(), "field2".to_string()),
@@ -659,6 +795,7 @@ mod tests {
                 ),
                 (
                     service_unit_key2,
+                    /* topic */ "",
                     HashMap::from([
                         ("field1_b".to_string(), "field1".to_string()),
                         ("field2_b".to_string(), "field2".to_string()),
@@ -714,6 +851,131 @@ mod tests {
         }
     }
 
+    // The resulting ProtoBuf message will look like this:
+    // {
+    //   someip_service_id: 2
+    //   version_major: 1
+    //   version_minor: 2
+    //   instance: [{
+    //     instance_id: 1
+    //     sdv_service_unit_parameterization: {}
+    //   }]
+    //   instance_impl: [{
+    //      group_id: 1
+    //      event_id: 2
+    //      event_type: GroupEvent({
+    //          event_part: [
+    //              {
+    //                  sdv_unit_type: { package_name: "sdv.test_package", ... }
+    //                  service_unit: 42
+    //                  topic: "test-service-unit1"
+    //                  field_name_mapping: { "field1_a": "field1", "field2_a": "field2" }
+    //              },
+    //              {
+    //                  sdv_unit_type: { package_name: "sdv.test_package", ... }
+    //                  service_unit: 42
+    //                  topic: "test-service-unit2"
+    //                  field_name_mapping: { "field1_b": "field1", "field2_b": "field2" }
+    //              }
+    //          ]
+    //      })
+    //   }]
+    // }
+    #[test]
+    fn process_someip_service_mapping_detects_someip_soa_group_event_successfully() {
+        let service_id = 2;
+        let version_major = 1;
+        let version_minor = 2;
+        let mut someip_service_mapping =
+            create_someip_service_mapping(service_id, version_major, version_minor);
+        let instance_id = 1;
+        let service_unit_key_not_existing = 42;
+        let topic1 = "test-service-unit1";
+        let topic2 = "test-service-unit2";
+        let parameterization = HashMap::new();
+
+        add_someip_instance_mapping(instance_id, parameterization, &mut someip_service_mapping);
+        let group_id: u16 = 1;
+        let event_id: u16 = 2;
+        let unit_type_package = "sdv.test_package";
+        let unit_type_bundle = "TestBundle";
+        let unit_type_name = "TestUnitType";
+        let event = create_group_event(
+            group_id,
+            event_id,
+            unit_type_package,
+            unit_type_bundle,
+            unit_type_name,
+            vec![
+                (
+                    service_unit_key_not_existing,
+                    topic1,
+                    HashMap::from([
+                        ("field1_a".to_string(), "field1".to_string()),
+                        ("field2_a".to_string(), "field2".to_string()),
+                    ]),
+                ),
+                (
+                    service_unit_key_not_existing,
+                    topic2,
+                    HashMap::from([
+                        ("field1_b".to_string(), "field1".to_string()),
+                        ("field2_b".to_string(), "field2".to_string()),
+                    ]),
+                ),
+            ],
+        );
+        someip_service_mapping.instance_impl.push(SomeIpInstanceImplementation {
+            interface_type: Some(event),
+            ..Default::default()
+        });
+        let someip_service_parser = SomeIpServiceMappingParser::new(DEFAULT_SOMEIP_CONFIG);
+        let someip_service_instance_mappings = someip_service_parser
+            .process_someip_service_mapping(
+                &someip_service_mapping,
+                &mut TypeMapping::default(),
+                SdMinorVersionMode::ExactOrAnyMinorVersion,
+            );
+        let expected_service = SomeIpService {
+            service_id,
+            instance_id,
+            version: SomeIpServiceVersion {
+                major: version_major as i8,
+                minor: version_minor as i32,
+            },
+        };
+        assert_eq!(someip_service_instance_mappings.len(), 1);
+        assert_eq!(
+            someip_service_instance_mappings[0]
+                .someip_service_instance_info
+                .someip_service_instance,
+            expected_service
+        );
+        assert_eq!(someip_service_instance_mappings[0].event_infos.len(), 1);
+        let SomeIpEventMappingType::GROUP(_, group_event_infos) =
+            &someip_service_instance_mappings[0].event_infos[0].event_mapping_type
+        else {
+            panic!("Expected Group event mapping type");
+        };
+        assert_eq!(2, group_event_infos.len());
+
+        let mut broker_service_units_name = vec![];
+        for (broker_service_unit, field_name_mapping) in group_event_infos {
+            let package = broker_service_unit.unit_type.get_sdv_package_name();
+            let bundle = broker_service_unit.unit_type.get_service_bundle_name();
+            let typename = broker_service_unit.unit_type.get_unit_type_name();
+            assert_eq!(
+                (package, bundle, typename),
+                (unit_type_package, "" /* deprecated */, unit_type_name)
+            );
+            broker_service_units_name.push(broker_service_unit.service_unit_name.clone());
+            let field_names =
+                field_name_mapping.values().map(|a| a.to_string()).collect::<Vec<String>>();
+            assert_that!(field_names, unordered_elements_are!(eq(&"field1"), eq(&"field2"),))
+        }
+        assert_that!(broker_service_units_name, unordered_elements_are!(eq(topic1), eq(topic2),));
+    }
+
     #[googletest::test]
     fn process_someip_service_mapping_detects_someip_rpc_successfully() {
         let service_id = 2;
@@ -745,6 +1007,7 @@ mod tests {
             unit_type_bundle,
             unit_type_name,
             service_unit_key,
+            "",
             vec![method1, method2],
         );
         someip_service_mapping
@@ -807,6 +1070,119 @@ mod tests {
         );
     }
 
+    // The resulting ProtoBuf message will look like this:
+    // {
+    //   someip_service_id: 2
+    //   version_major: 1
+    //   version_minor: 2
+    //   instance: [{
+    //     instance_id: 1
+    //     sdv_service_unit_parameterization: {}
+    //   }]
+    //   instance_impl: [{
+    //      interface_type: OfferedInterface({
+    //          sdv_unit_type: { package_name: "sdv.test_package", ... }
+    //          service_unit: 42
+    //          channel: "test-service-channel"
+    //          method: [
+    //              { procedure: "method1", method_id: 20 },
+    //              { procedure: "method2", method_id: 30 }
+    //          ]
+    //      })
+    //   }]
+    // }
+    #[googletest::test]
+    fn process_someip_service_mapping_detects_someip_soa_rpc_successfully() {
+        let service_id = 2;
+        let version_major = 1;
+        let version_minor = 2;
+
+        let mut someip_service_mapping =
+            create_someip_service_mapping(service_id, version_major, version_minor);
+
+        let instance_id = 1;
+        let service_unit_key_not_existing = 42;
+        let service_channel = "test-service-channel";
+        let parameterization = HashMap::new();
+        add_someip_instance_mapping(instance_id, parameterization, &mut someip_service_mapping);
+
+        let unit_type_package = "sdv.test_package";
+        let unit_type_bundle = "TestBundle";
+        let unit_type_name = "TestUnitType";
+        let (method1_name, method1_id) = ("method1", 20);
+        let (method2_name, method2_id) = ("method2", 30);
+
+        let method1 = create_rpc_method(method1_name, method1_id);
+        let method2 = create_rpc_method(method2_name, method2_id);
+
+        let rpc = create_rpc_interface(
+            unit_type_package,
+            unit_type_bundle,
+            unit_type_name,
+            service_unit_key_not_existing,
+            service_channel,
+            vec![method1, method2],
+        );
+        someip_service_mapping
+            .instance_impl
+            .push(SomeIpInstanceImplementation { interface_type: Some(rpc), ..Default::default() });
+
+        let someip_service_parser = SomeIpServiceMappingParser::new(DEFAULT_SOMEIP_CONFIG);
+        let someip_service_instance_mappings = someip_service_parser
+            .process_someip_service_mapping(
+                &someip_service_mapping,
+                &mut TypeMapping::default(),
+                SdMinorVersionMode::ExactOrAnyMinorVersion,
+            );
+
+        let expected_service = SomeIpService {
+            service_id,
+            instance_id,
+            version: SomeIpServiceVersion {
+                major: version_major as i8,
+                minor: version_minor as i32,
+            },
+        };
+
+        assert_eq!(someip_service_instance_mappings.len(), 1);
+
+        assert_eq!(
+            someip_service_instance_mappings[0]
+                .someip_service_instance_info
+                .someip_service_instance,
+            expected_service
+        );
+        assert_eq!(someip_service_instance_mappings[0].rpc_infos.len(), 1);
+
+        let unit_type =
+            &someip_service_instance_mappings[0].rpc_infos[0].broker_service_unit.unit_type;
+        let package = unit_type.get_sdv_package_name();
+        let bundle = unit_type.get_service_bundle_name();
+        let typename = unit_type.get_unit_type_name();
+
+        assert_eq!(
+            someip_service_instance_mappings[0].rpc_infos[0].broker_service_unit.service_unit_name,
+            service_channel.to_string()
+        );
+        assert_eq!(
+            (package, bundle, typename),
+            (unit_type_package, "" /* deprecated */, unit_type_name)
+        );
+        assert_that!(
+            someip_service_instance_mappings[0].rpc_infos[0].rpc_method_infos,
+            unordered_elements_are!(
+                eq(&RpcMethodMappingInfo {
+                    sdv_method_name: method1_name.to_string(),
+                    someip_method_id: method1_id
+                }),
+                eq(&RpcMethodMappingInfo {
+                    sdv_method_name: method2_name.to_string(),
+                    someip_method_id: method2_id
+                }),
+            )
+        );
+    }
+
     #[test]
     fn test_dynamic_library_mode_parsing_succeeds() {
         let result = SomeIpServiceMappingParser::get_message_translation_mode(Some(
@@ -843,5 +1219,125 @@ mod tests {
     fn test_unspecified_mode_translation_succeeds() {
         let result = SomeIpServiceMappingParser::get_message_translation_mode(None);
         assert_eq!(result, MessageTranslationMode::Reflection);
+    }
+
+    #[test]
+    fn test_ambiguous_rpc_mapping_fails() {
+        let service_id = 2;
+        let version_major = 1;
+        let version_minor = 2;
+
+        let mut someip_service_mapping =
+            create_someip_service_mapping(service_id, version_major, version_minor);
+
+        let instance_id = 1;
+        let key = 2;
+        let name = "test-name";
+        let mut sdv_units = HashMap::new();
+        sdv_units.insert(key, name.to_string());
+        let mut soa_topics = HashMap::new();
+        soa_topics.insert(key, name.to_string());
+
+        add_someip_instance_mapping(instance_id, sdv_units, &mut someip_service_mapping);
+
+        let rpc = create_rpc_interface(
+            "sdv.test",
+            "TestBundle",
+            "TestUnit",
+            key,
+            /* topic */ name,
+            vec![create_rpc_method("method1", 20)],
+        );
+        someip_service_mapping
+            .instance_impl
+            .push(SomeIpInstanceImplementation { interface_type: Some(rpc), ..Default::default() });
+
+        let someip_service_parser = SomeIpServiceMappingParser::new(DEFAULT_SOMEIP_CONFIG);
+        let someip_service_instance_mappings = someip_service_parser
+            .process_someip_service_mapping(
+                &someip_service_mapping,
+                &mut TypeMapping::default(),
+                SdMinorVersionMode::ExactOrAnyMinorVersion,
+            );
+        assert!(someip_service_instance_mappings.is_empty());
+    }
+
+    #[test]
+    fn test_ambiguous_simple_event_mapping_fails() {
+        let service_id = 2;
+        let version_major = 1;
+        let version_minor = 2;
+
+        let mut someip_service_mapping =
+            create_someip_service_mapping(service_id, version_major, version_minor);
+
+        let instance_id = 1;
+        let key = 2;
+        let name = "test_name";
+        let mut sdv_units = HashMap::new();
+        sdv_units.insert(key, name.to_string());
+
+        add_someip_instance_mapping(instance_id, sdv_units, &mut someip_service_mapping);
+
+        let event = create_simple_event(
+            1,
+            2,
+            "sdv.test",
+            "TestBundle",
+            "TestUnit",
+            key,
+            /* topic */ name,
+        );
+        someip_service_mapping.instance_impl.push(SomeIpInstanceImplementation {
+            interface_type: Some(event),
+            ..Default::default()
+        });
+
+        let someip_service_parser = SomeIpServiceMappingParser::new(DEFAULT_SOMEIP_CONFIG);
+        let someip_service_instance_mappings = someip_service_parser
+            .process_someip_service_mapping(
+                &someip_service_mapping,
+                &mut TypeMapping::default(),
+                SdMinorVersionMode::ExactOrAnyMinorVersion,
+            );
+        assert!(someip_service_instance_mappings.is_empty());
+    }
+
+    #[test]
+    fn test_ambiguous_group_event_mapping_fails() {
+        let service_id = 2;
+        let version_major = 1;
+        let version_minor = 2;
+        let mut someip_service_mapping =
+            create_someip_service_mapping(service_id, version_major, version_minor);
+        let instance_id = 1;
+        let key = 2;
+        let name = "test-name";
+        let mut sdv_units = HashMap::new();
+        sdv_units.insert(key, name.to_string());
+
+        add_someip_instance_mapping(instance_id, sdv_units, &mut someip_service_mapping);
+
+        let event = create_group_event(
+            1,
+            2,
+            "sdv.test",
+            "TestBundle",
+            "TestUnit",
+            vec![(key, name, HashMap::new())],
+        );
+        someip_service_mapping.instance_impl.push(SomeIpInstanceImplementation {
+            interface_type: Some(event),
+            ..Default::default()
+        });
+
+        let someip_service_parser = SomeIpServiceMappingParser::new(DEFAULT_SOMEIP_CONFIG);
+        let someip_service_instance_mappings = someip_service_parser
+            .process_someip_service_mapping(
+                &someip_service_mapping,
+                &mut TypeMapping::default(),
+                SdMinorVersionMode::ExactOrAnyMinorVersion,
+            );
+        assert!(someip_service_instance_mappings.is_empty());
     }
 }

@@ -35,8 +35,7 @@ use sdv_status_rs::SdvStatusCode;
 use google_sdv_someip::aidl::google::sdv::someip::SomeIpService::SomeIpService;
 
 use crate::agent::protocol_mapping::RpcMethodMappingInfo;
-use crate::agent::protocol_mapping::SdvServiceUnitId;
-use crate::agent::protocol_mapping::SdvServiceUnitInfo;
+use crate::agent::protocol_mapping::SdvIdentifier;
 use crate::agent::protocol_mapping::SomeIpRpcMappingInfo;
 use crate::agent::protocol_mapping::SomeIpServiceInstanceInfo;
 use crate::agent::service_matcher::SomeIpServiceMap;
@@ -57,7 +56,7 @@ type ConnectionTaskMap = Arc<DashMap<BrokerSomeIpService, (CancellationToken, Jo
 pub(crate) trait IRpcHandler: Send + Sync {
     fn add_sdv_rpc_mapping(
         &mut self,
-        service_unit_info: SdvServiceUnitInfo,
+        service_unit_info: SdvIdentifier,
         someip_service_instance_info: SomeIpService,
         rpc_mapping_info: Vec<RpcMethodMappingInfo>,
     );
@@ -78,7 +77,7 @@ pub(crate) struct RpcHandler {
     sdv_comms: Arc<dyn ISdvCommsContext>,
     translator: Arc<dyn IBrokerTranslator>,
     broker_rpc_client_map: Arc<DashMap<BrokerSomeIpService, BrokerRpcClientInfo>>,
-    sdv_service_mappings: HashMap<SdvServiceUnitId, SdvRpcInterfaceInfo>,
+    sdv_service_mappings: HashMap<SdvIdentifier, SdvRpcInterfaceInfo>,
     someip_service_mappings: SomeIpServiceMap<Vec<SomeIpRpcMappingInfo>>,
     connection_tasks: ConnectionTaskMap,
 }
@@ -103,12 +102,12 @@ impl RpcHandler {
 impl IRpcHandler for RpcHandler {
     fn add_sdv_rpc_mapping(
         &mut self,
-        service_unit_info: SdvServiceUnitInfo,
+        sdv_identifier: SdvIdentifier,
         someip_service_instance_info: SomeIpService,
         rpc_mapping_info: Vec<RpcMethodMappingInfo>,
     ) {
         self.sdv_service_mappings.insert(
-            service_unit_info.service_unit_id,
+            sdv_identifier,
             SdvRpcInterfaceInfo::new(someip_service_instance_info, rpc_mapping_info),
         );
     }
@@ -183,14 +182,21 @@ impl RpcHandler {
         &self,
         service_unit_definition: &ServiceUnitDefinition,
     ) -> Option<&SdvRpcInterfaceInfo> {
-        for (sdv_service_unit, sdv_rpc_interface_info) in &self.sdv_service_mappings {
-            if sdv_service_unit.service_unit_name
-                == service_unit_definition.get_unit_identifier().get_unit_name()
-                && sdv_service_unit
-                    .service_fqin
-                    .matches(service_unit_definition.get_service_bundle_identity().get_fqin())
-            {
-                return Some(sdv_rpc_interface_info);
+        for (sdv_identifier, sdv_rpc_interface_info) in &self.sdv_service_mappings {
+            match sdv_identifier {
+                SdvIdentifier::ServiceUnitInfo { service_unit_id } => {
+                    if service_unit_id.service_unit_name
+                        == service_unit_definition.get_unit_identifier().get_unit_name()
+                        && service_unit_id.service_fqin.matches(
+                            service_unit_definition.get_service_bundle_identity().get_fqin(),
+                        )
+                    {
+                        return Some(sdv_rpc_interface_info);
+                    }
+                }
+                SdvIdentifier::SoaInfo { soa_identifier: _ } => {
+                    // TODO: b/487204223 - implement SOA logic in SOME/IP broker
+                }
             }
         }
         None

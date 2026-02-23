@@ -38,8 +38,8 @@ use sdv_vsidl_common::proto_size_utils::compute_message_length_including_header;
 use crate::agent::protocol_mapping::SdvTopicMappingInfo;
 use crate::agent::protocol_mapping::SomeIpEvent;
 use crate::agent::protocol_mapping::SomeIpEventMappingInfo;
-use crate::agent::protocol_mapping::{BrokerServiceUnit, SdvServiceUnitCommsId, SdvServiceUnitId};
-use crate::agent::protocol_mapping::{SdvServiceUnitInfo, SomeIpServiceInstanceInfo};
+use crate::agent::protocol_mapping::{BrokerServiceUnit, SdvServiceUnitCommsId};
+use crate::agent::protocol_mapping::{SdvIdentifier, SomeIpServiceInstanceInfo};
 use crate::agent::service_matcher::SomeIpServiceMap;
 use crate::agent::IAvailabilitySubscriber;
 use crate::agent::ServiceType;
@@ -60,7 +60,7 @@ use crate::translator::TranslationMode;
 pub(crate) trait IPubSubHandler: Send + Sync {
     fn add_topic_mapping(
         &mut self,
-        service_unit_info: SdvServiceUnitInfo,
+        sdv_identifier: SdvIdentifier,
         someip_service_instance_info: SomeIpService,
         topic_mapping_info: SdvTopicMappingInfo,
     );
@@ -93,7 +93,7 @@ pub(crate) struct PubSubHandler {
     translator: Arc<dyn IBrokerTranslator>,
     dt_polling_interval: Duration,
     broker_publisher_map: Arc<DashMap<SomeIpEventSubscriberInfo, BrokerPublisher>>,
-    sdv_service_mappings: HashMap<SdvServiceUnitId, PubSubTopicInfo>,
+    sdv_service_mappings: HashMap<SdvIdentifier, PubSubTopicInfo>,
     sdv_multipub_mappings: HashMap<UnitType, SdvMultipubTopicInfo>,
     someip_service_mappings: SomeIpServiceMap<Vec<PubSubEventMappingInfo>>,
 }
@@ -120,12 +120,12 @@ impl PubSubHandler {
 impl IPubSubHandler for PubSubHandler {
     fn add_topic_mapping(
         &mut self,
-        service_unit_info: SdvServiceUnitInfo,
+        sdv_identifier: SdvIdentifier,
         someip_service_instance_info: SomeIpService,
         topic_mapping_info: SdvTopicMappingInfo,
     ) {
         self.sdv_service_mappings.insert(
-            service_unit_info.service_unit_id,
+            sdv_identifier,
             PubSubTopicInfo::new(someip_service_instance_info, topic_mapping_info),
         );
     }
@@ -257,14 +257,21 @@ impl PubSubHandler {
         &self,
         service_unit_definition: &ServiceUnitDefinition,
     ) -> Option<&PubSubTopicInfo> {
-        for (sdv_service_unit, topic_info) in &self.sdv_service_mappings {
-            if sdv_service_unit.service_unit_name
-                == service_unit_definition.get_unit_identifier().get_unit_name()
-                && sdv_service_unit
-                    .service_fqin
-                    .matches(service_unit_definition.get_service_bundle_identity().get_fqin())
-            {
-                return Some(topic_info);
+        for (sdv_identifier, topic_info) in &self.sdv_service_mappings {
+            match sdv_identifier {
+                SdvIdentifier::ServiceUnitInfo { service_unit_id } => {
+                    if service_unit_id.service_unit_name
+                        == service_unit_definition.get_unit_identifier().get_unit_name()
+                        && service_unit_id.service_fqin.matches(
+                            service_unit_definition.get_service_bundle_identity().get_fqin(),
+                        )
+                    {
+                        return Some(topic_info);
+                    }
+                }
+                SdvIdentifier::SoaInfo { soa_identifier: _ } => {
+                    // TODO: b/487204223 - implement SOA logic in SOME/IP broker
+                }
             }
         }
         None
@@ -965,6 +972,7 @@ impl PubSubHandler {
 mod tests {
     use super::*;
     use crate::agent::notifier::MockIAvailabilitySubscriber;
+    use crate::agent::protocol_mapping::SdvServiceUnitId;
     use crate::agent::protocol_mapping::ServiceFqinInternal;
     use crate::agent::protocol_mapping::SomeIpEventMappingType;
     use crate::comms::{MockISdvCommsContext, MockISomeIpStackContext};
@@ -988,21 +996,15 @@ mod tests {
         }
     }
 
-    fn create_test_sdv_service_unit_info(
-        unit_type: &UnitType,
-        unit_name: &str,
-    ) -> SdvServiceUnitInfo {
-        SdvServiceUnitInfo {
-            service_unit_id: SdvServiceUnitId {
-                service_fqin: ServiceFqinInternal {
-                    sdv_vm_name: Some("vm".to_string()),
-                    sdv_package_name: unit_type.get_sdv_package_name().to_string(),
-                    service_bundle_name: unit_type.get_service_bundle_name().to_string(),
-                    service_instance_name: Some("instance".to_string()),
-                },
-                service_unit_name: unit_name.to_string(),
+    fn create_test_sdv_service_unit_id(unit_type: &UnitType, unit_name: &str) -> SdvServiceUnitId {
+        SdvServiceUnitId {
+            service_fqin: ServiceFqinInternal {
+                sdv_vm_name: Some("vm".to_string()),
+                sdv_package_name: unit_type.get_sdv_package_name().to_string(),
+                service_bundle_name: unit_type.get_service_bundle_name().to_string(),
+                service_instance_name: Some("instance".to_string()),
             },
-            unit_type: unit_type.clone(),
+            service_unit_name: unit_name.to_string(),
         }
     }
 
@@ -1020,22 +1022,23 @@ mod tests {
             .set_unit_type_name("TestType")
             .build()
             .expect("Unit type must be valid");
-        let service_unit_info = create_test_sdv_service_unit_info(&unit_type, "unit");
+        let sdv_identifier = SdvIdentifier::ServiceUnitInfo {
+            service_unit_id: create_test_sdv_service_unit_id(&unit_type, "unit"),
+        };
         let someip_service = create_test_someip_service(1, 1, 1, 0);
         let topic_mapping_info =
             SdvTopicMappingInfo::SimpleMapping { someip_event_id: 10, someip_eventgroup_id: 20 };
 
         // WHEN
         handler.add_topic_mapping(
-            service_unit_info.clone(),
+            sdv_identifier.clone(),
             someip_service,
             topic_mapping_info.clone(),
         );
 
         // THEN
         assert_eq!(handler.sdv_service_mappings.len(), 1);
-        let stored_info =
-            handler.sdv_service_mappings.get(&service_unit_info.service_unit_id).unwrap();
+        let stored_info = handler.sdv_service_mappings.get(&sdv_identifier).unwrap();
         assert_eq!(stored_info.someip_service, someip_service);
         assert_eq!(stored_info.sdv_topic_mapping_info, topic_mapping_info);
     }

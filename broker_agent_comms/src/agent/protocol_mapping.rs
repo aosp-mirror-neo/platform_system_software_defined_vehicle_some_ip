@@ -86,12 +86,40 @@ pub(crate) struct SdvMultipubMapping {
     pub someip_eventgroup_id: u16,
 }
 
+/// Identifies a mapping between an internal SDV service and external SOME/IP service
+///
+/// - SdvIdentifier points to SDV service (specific or Topic/Channel in SOA)
+/// - unit_type points to the proto messaged provided by the sdv_identifier
+/// - someip_service_instance_info
+/// - service_unit_interface
 #[derive(PartialEq, Clone)]
 pub(crate) struct SdvServiceUnitMapping {
-    pub service_unit_info: SdvServiceUnitInfo,
+    pub sdv_identifier: SdvIdentifier,
+    pub unit_type: UnitType,
     pub someip_service_instance_info: SomeIpService,
-
     pub service_unit_interface: SdvServiceUnitInterface,
+}
+
+/// Identifies a service in SDV environment that needs to be exported to SOME/IP
+///
+/// It can be either:
+/// - ServiceUnitInfo: a specific instance of an SDV service unit (Legacy)
+///   identified by FQIN + service_unit_name
+/// - SoaInfo:
+///   - a reference to a PubSub Topic
+///   - a reference to a RPC Channel
+///
+/// In the SOA scenario, the Type used by this unit is stored
+/// inside SdvServiceUnitMapping
+#[derive(PartialEq, Hash, Eq, Clone, Debug)]
+pub(crate) enum SdvIdentifier {
+    ServiceUnitInfo {
+        service_unit_id: SdvServiceUnitId,
+    },
+    #[allow(dead_code)]
+    SoaInfo {
+        soa_identifier: String,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -175,14 +203,15 @@ pub(crate) struct SdvServiceUnitId {
     pub service_unit_name: String,
 }
 
-#[derive(PartialEq, Debug, Clone)]
-pub(crate) struct SdvServiceUnitInfo {
-    pub service_unit_id: SdvServiceUnitId,
-    pub unit_type: UnitType,
-}
-
+// Represents a specific service unit within the SDV communication framework
+// that is being exposed by the SOME/IP broker. (SOME/IP -> [broker] -> SDV )
+// This struct contains the necessary information to register or interact with
+// this service unit via the `sdv_comms` interface.
 #[derive(PartialEq, Clone, Debug)]
 pub(crate) struct BrokerServiceUnit {
+    // service_unit_name is set to service_unit value in case of legacy
+    // service_unit_name is set to topic for import of PubSub
+    // service_unit_name is set to channel for import of RPC
     pub service_unit_name: String,
     pub unit_type: UnitType,
 }
