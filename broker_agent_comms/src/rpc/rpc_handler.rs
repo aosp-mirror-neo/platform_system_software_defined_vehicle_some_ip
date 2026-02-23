@@ -194,8 +194,17 @@ impl RpcHandler {
                         return Some(sdv_rpc_interface_info);
                     }
                 }
-                SdvIdentifier::SoaInfo { soa_identifier: _ } => {
-                    // TODO: b/487204223 - implement SOA logic in SOME/IP broker
+                SdvIdentifier::SoaInfo { soa_identifier } => {
+                    let UnitMetadata::Server(_) = service_unit_definition.get_unit_metadata()
+                    else {
+                        continue;
+                    };
+
+                    if service_unit_definition.get_unit_identifier().get_unit_name()
+                        == *soa_identifier
+                    {
+                        return Some(sdv_rpc_interface_info);
+                    }
                 }
             }
         }

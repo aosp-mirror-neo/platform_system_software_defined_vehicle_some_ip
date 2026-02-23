@@ -282,7 +282,7 @@ impl PubSubHandler {
         someip_comms,
         service_unit_definition,
         broker_subscriber_map,
-        broker_multipub_subscriber_map
+        broker_multipub_subscriber_map,
     ))]
     async fn handle_sdv_unit_availability(
         &self,
