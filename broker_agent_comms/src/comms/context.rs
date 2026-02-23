@@ -71,6 +71,12 @@ pub(crate) trait ISdvCommsContext: Sync + Send {
 
     async fn create_multipub_subscriber(&self, unit_type: &UnitType) -> anyhow::Result<Subscriber>;
 
+    async fn create_soa_subscriber(
+        &self,
+        unit_type: &UnitType,
+        topic: &str,
+    ) -> anyhow::Result<Subscriber>;
+
     async fn create_server(
         &self,
         unit_registration_args: UnitRegistrationArgs,
@@ -265,6 +271,26 @@ impl ISdvCommsContext for SdvCommsContext {
         .map_err(|e| {
             anyhow::anyhow!(
                 "Failed to create subscriber for multipub unit type {}: {e:?}",
+                unit_type
+            )
+        })
+    }
+
+    async fn create_soa_subscriber(
+        &self,
+        unit_type: &UnitType,
+        topic: &str,
+    ) -> anyhow::Result<Subscriber> {
+        Subscriber::create_for_topic(
+            self.get_context().await,
+            unit_type,
+            topic,
+            SubscriberOptions { fetch_last_message: true },
+        )
+        .await
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to create subscriber for topic {topic} unit type {}: {e:?}",
                 unit_type
             )
         })

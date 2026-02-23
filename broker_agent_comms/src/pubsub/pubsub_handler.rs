@@ -47,9 +47,10 @@ use crate::binder_load_indicators::load_indicators::LoadIndicators;
 use crate::comms::ISdvCommsContext;
 use crate::comms::ISomeIpStackContext;
 use crate::pubsub::config::{
-    BrokerMultipubSubscriberInfo, BrokerPublisher, BrokerSubscriberInfo, BrokerSubscriberType,
-    PollableSubscriber, PubSubEventMappingInfo, PubSubEventMappingType, PubSubTopicInfo,
-    SdvMultipubTopicInfo, SimplePublisherInfo, SomeIpEventSubscriberInfo,
+    BrokerMultipubSubscriberInfo, BrokerPublisher, BrokerSoaSubscriberInfo, BrokerSubscriberInfo,
+    BrokerSubscriberType, IdentifierMode, PollableSubscriber, PubSubEventMappingInfo,
+    PubSubEventMappingType, PubSubTopicInfo, SdvMultipubTopicInfo, SimplePublisherInfo,
+    SomeIpEventSubscriberInfo, TopicIdentifier,
 };
 use crate::pubsub::EventNotificationCallback;
 use crate::translator::IBrokerTranslator;
@@ -179,6 +180,8 @@ impl IPubSubHandler for PubSubHandler {
         let broker_subscriber_map_clone = broker_subscriber_map.clone();
         let broker_multipub_subscriber_map = Arc::new(DashMap::new());
         let broker_multipub_subscriber_map_clone = broker_multipub_subscriber_map.clone();
+        let broker_soa_subscriber_map = Arc::new(DashMap::new());
+        let broker_soa_subscriber_map_clone = broker_soa_subscriber_map.clone();
         let translator_clone = self.translator.clone();
         let someip_comms_clone = someip_comms.clone();
         let sdv_comms_clone = self.sdv_comms.clone();
@@ -191,6 +194,7 @@ impl IPubSubHandler for PubSubHandler {
                     &sdv_comms_clone,
                     &broker_subscriber_map_clone,
                     &broker_multipub_subscriber_map_clone,
+                    &broker_soa_subscriber_map_clone,
                     &translator_clone,
                     &someip_comms_clone,
                 )
@@ -218,6 +222,7 @@ impl IPubSubHandler for PubSubHandler {
                         availability_message.available,
                         &broker_subscriber_map,
                         &broker_multipub_subscriber_map,
+                        &broker_soa_subscriber_map,
                     )
                     .await;
                 }
@@ -256,7 +261,7 @@ impl PubSubHandler {
     fn find_matching_info(
         &self,
         service_unit_definition: &ServiceUnitDefinition,
-    ) -> Option<&PubSubTopicInfo> {
+    ) -> Option<(&PubSubTopicInfo, IdentifierMode)> {
         for (sdv_identifier, topic_info) in &self.sdv_service_mappings {
             match sdv_identifier {
                 SdvIdentifier::ServiceUnitInfo { service_unit_id } => {
@@ -266,11 +271,18 @@ impl PubSubHandler {
                             service_unit_definition.get_service_bundle_identity().get_fqin(),
                         )
                     {
-                        return Some(topic_info);
+                        return Some((topic_info, IdentifierMode::ServiceUnitInfo));
                     }
                 }
-                SdvIdentifier::SoaInfo { soa_identifier: _ } => {
-                    // TODO: b/487204223 - implement SOA logic in SOME/IP broker
+                SdvIdentifier::SoaInfo { soa_identifier } => {
+                    let UnitMetadata::Publisher(publisher_unit_metadata) =
+                        service_unit_definition.get_unit_metadata()
+                    else {
+                        continue;
+                    };
+                    if publisher_unit_metadata.get_topic() == *soa_identifier {
+                        return Some((topic_info, IdentifierMode::Soa));
+                    }
                 }
             }
         }
@@ -283,6 +295,7 @@ impl PubSubHandler {
         service_unit_definition,
         broker_subscriber_map,
         broker_multipub_subscriber_map,
+        broker_soa_subscriber_map
     ))]
     async fn handle_sdv_unit_availability(
         &self,
@@ -291,6 +304,7 @@ impl PubSubHandler {
         available: bool,
         broker_subscriber_map: &Arc<DashMap<SdvServiceUnitCommsId, BrokerSubscriberInfo>>,
         broker_multipub_subscriber_map: &Arc<DashMap<UnitType, BrokerMultipubSubscriberInfo>>,
+        broker_soa_subscriber_map: &Arc<DashMap<TopicIdentifier, BrokerSoaSubscriberInfo>>,
     ) {
         if let Some(multipub_topic_info) =
             self.sdv_multipub_mappings.get(&service_unit_definition.get_unit_type())
@@ -303,13 +317,17 @@ impl PubSubHandler {
                 multipub_topic_info,
             )
             .await;
-        } else if let Some(pubsub_topic_info) = self.find_matching_info(&service_unit_definition) {
+        } else if let Some((pubsub_topic_info, identifier_mode)) =
+            self.find_matching_info(&service_unit_definition)
+        {
             self.handle_sdv_topic(
                 someip_comms,
                 service_unit_definition,
                 available,
                 broker_subscriber_map,
+                broker_soa_subscriber_map,
                 pubsub_topic_info,
+                identifier_mode,
             )
             .await;
         } else {
@@ -318,11 +336,13 @@ impl PubSubHandler {
         };
     }
 
+    #[allow(clippy::too_many_arguments)]
     #[tracing::instrument(skip(
         self,
         someip_comms,
         service_unit_definition,
         broker_subscriber_map,
+        broker_soa_subscriber_map,
         pubsub_topic_info
     ))]
     async fn handle_sdv_topic(
@@ -331,7 +351,9 @@ impl PubSubHandler {
         service_unit_definition: Box<ServiceUnitDefinition>,
         available: bool,
         broker_subscriber_map: &Arc<DashMap<SdvServiceUnitCommsId, BrokerSubscriberInfo>>,
+        broker_soa_subscriber_map: &Arc<DashMap<TopicIdentifier, BrokerSoaSubscriberInfo>>,
         pubsub_topic_info: &PubSubTopicInfo,
+        identifier_mode: IdentifierMode,
     ) {
         if available {
             self.handle_sdv_topic_mapping_info(
@@ -339,30 +361,73 @@ impl PubSubHandler {
                 service_unit_definition,
                 pubsub_topic_info,
                 broker_subscriber_map,
+                broker_soa_subscriber_map,
+                identifier_mode,
             )
             .await;
         } else {
-            if let SdvTopicMappingInfo::SimpleMapping { someip_event_id, someip_eventgroup_id } =
-                pubsub_topic_info.sdv_topic_mapping_info
-            {
-                self.stop_offer_sdv_topic(
-                    someip_comms,
-                    &pubsub_topic_info.someip_service,
-                    someip_eventgroup_id,
-                    someip_event_id,
-                )
-                .await;
-            };
+            match identifier_mode {
+                IdentifierMode::ServiceUnitInfo => {
+                    if let SdvTopicMappingInfo::SimpleMapping {
+                        someip_event_id,
+                        someip_eventgroup_id,
+                    } = pubsub_topic_info.sdv_topic_mapping_info
+                    {
+                        self.stop_offer_sdv_topic(
+                            someip_comms,
+                            &pubsub_topic_info.someip_service,
+                            someip_eventgroup_id,
+                            someip_event_id,
+                        )
+                        .await;
+                    };
 
-            // Subscriber drop impl should be called here
-            let _ = broker_subscriber_map.remove(
-                &SdvServiceUnitCommsId::from_service_unit_definition(&service_unit_definition),
-            );
+                    // Subscriber drop impl should be called here
+                    let _ = broker_subscriber_map.remove(
+                        &SdvServiceUnitCommsId::from_service_unit_definition(
+                            &service_unit_definition,
+                        ),
+                    );
+                }
+                IdentifierMode::Soa => {
+                    let unit_metadata = service_unit_definition.get_unit_metadata();
+                    let UnitMetadata::Publisher(publisher_unit_metadata) = unit_metadata else {
+                        return;
+                    };
+                    let topic = publisher_unit_metadata.get_topic();
+                    let topic_identifier =
+                        TopicIdentifier::new(service_unit_definition.get_unit_type(), topic);
+                    let entry = broker_soa_subscriber_map.entry(topic_identifier);
+                    let dashmap::mapref::entry::Entry::Occupied(mut occupied) = entry else {
+                        return;
+                    };
+
+                    let broker_soa_subscriber_info = occupied.get_mut();
+                    broker_soa_subscriber_info.publisher_count -= 1;
+                    if broker_soa_subscriber_info.publisher_count != 0 {
+                        return;
+                    }
+                    let (_, broker_soa_subscriber_info) = occupied.remove_entry();
+
+                    let BrokerSubscriberType::SIMPLE(someip_event) =
+                        broker_soa_subscriber_info.subscriber_type
+                    else {
+                        return;
+                    };
+
+                    self.stop_offer_sdv_topic(
+                        someip_comms,
+                        &someip_event.someip_service,
+                        someip_event.eventgroup_id,
+                        someip_event.event_id,
+                    )
+                    .await;
+                }
+            }
         }
     }
 
-    #[tracing::instrument(skip_all)]
-    async fn handle_sdv_topic_mapping_info(
+    async fn handle_sdv_topic_info_service_unit(
         &self,
         someip_comms: &Arc<dyn ISomeIpStackContext>,
         service_unit_definition: Box<ServiceUnitDefinition>,
@@ -435,6 +500,118 @@ impl PubSubHandler {
                 message_size,
             },
         );
+    }
+
+    async fn handle_sdv_topic_info_soa(
+        &self,
+        someip_comms: &Arc<dyn ISomeIpStackContext>,
+        service_unit_definition: Box<ServiceUnitDefinition>,
+        pubsub_topic_info: &PubSubTopicInfo,
+        broker_soa_subscriber_map: &Arc<DashMap<TopicIdentifier, BrokerSoaSubscriberInfo>>,
+    ) {
+        let UnitMetadata::Publisher(publisher_unit_metadata) =
+            service_unit_definition.get_unit_metadata()
+        else {
+            return;
+        };
+        let topic = publisher_unit_metadata.get_topic();
+        let unit_type = service_unit_definition.get_unit_type();
+        let topic_identifier = TopicIdentifier::new(unit_type.clone(), topic.clone());
+        if broker_soa_subscriber_map.contains_key(&topic_identifier) {
+            let Some(mut broker_soa_subscriber_info) =
+                broker_soa_subscriber_map.get_mut(&topic_identifier)
+            else {
+                // impossible
+                return;
+            };
+            broker_soa_subscriber_info.value_mut().publisher_count += 1;
+        } else {
+            let subscriber = match self.sdv_comms.create_soa_subscriber(&unit_type, &topic).await {
+                Ok(subscriber) => Some(subscriber),
+                Err(e) => {
+                    log::error!(
+                            "Failed to create topic subscriber for unit type {unit_type}, topic {topic}: {e:?}, will retry on next poll."
+                        );
+                    None
+                }
+            };
+            let message_size = publisher_unit_metadata.get_message_size();
+            let Ok(message_size) = usize::try_from(message_size) else {
+                log::error!(
+                    "Invalid message size {} for unit type {}, skipping",
+                    message_size,
+                    unit_type
+                );
+                return;
+            };
+
+            let subscriber_type = match &pubsub_topic_info.sdv_topic_mapping_info {
+                SdvTopicMappingInfo::SimpleMapping { someip_event_id, someip_eventgroup_id } => {
+                    self.offer_sdv_topic(
+                        someip_comms,
+                        &pubsub_topic_info.someip_service,
+                        *someip_eventgroup_id,
+                        *someip_event_id,
+                    )
+                    .await;
+
+                    BrokerSubscriberType::SIMPLE(SomeIpEvent::new(
+                        pubsub_topic_info.someip_service,
+                        *someip_event_id,
+                        *someip_eventgroup_id,
+                    ))
+                }
+                SdvTopicMappingInfo::FireAndForgetMapping { ff_mapping } => {
+                    BrokerSubscriberType::FF(ff_mapping.clone())
+                }
+            };
+
+            let broker_soa_subscriber_info = BrokerSoaSubscriberInfo {
+                subscriber_type,
+                topic_name: topic.clone(),
+                first_publisher_fqin: service_unit_definition
+                    .get_service_bundle_identity()
+                    .get_fqin()
+                    .clone(),
+                unit_type,
+                subscriber: Mutex::new(subscriber),
+                message_size,
+                publisher_count: 1,
+            };
+            broker_soa_subscriber_map.insert(topic_identifier, broker_soa_subscriber_info);
+        }
+    }
+
+    #[tracing::instrument(skip_all)]
+    async fn handle_sdv_topic_mapping_info(
+        &self,
+        someip_comms: &Arc<dyn ISomeIpStackContext>,
+        service_unit_definition: Box<ServiceUnitDefinition>,
+        pubsub_topic_info: &PubSubTopicInfo,
+        broker_subscriber_map: &Arc<DashMap<SdvServiceUnitCommsId, BrokerSubscriberInfo>>,
+        broker_soa_subscriber_map: &Arc<DashMap<TopicIdentifier, BrokerSoaSubscriberInfo>>,
+        identifier_mode: IdentifierMode,
+    ) {
+        match identifier_mode {
+            IdentifierMode::ServiceUnitInfo => {
+                self.handle_sdv_topic_info_service_unit(
+                    someip_comms,
+                    service_unit_definition,
+                    pubsub_topic_info,
+                    broker_subscriber_map,
+                )
+                .await;
+            }
+            IdentifierMode::Soa => {
+                self.handle_sdv_topic_info_soa(
+                    someip_comms,
+                    service_unit_definition,
+                    pubsub_topic_info,
+                    broker_soa_subscriber_map,
+                )
+                .await;
+            }
+        }
     }
 
     #[tracing::instrument(skip(
@@ -769,6 +946,7 @@ impl PubSubHandler {
             publisher_unit_metadata
                 .set_message_size(compute_message_length_including_header(message_size));
             publisher_unit_metadata.set_message_count(message_count);
+            publisher_unit_metadata.set_topic(&broker_service_unit.service_unit_name);
 
             unit_registration_args.set_unit_name(&broker_service_unit.service_unit_name);
             unit_registration_args.set_unit_type(&broker_service_unit.unit_type);
@@ -785,6 +963,7 @@ impl PubSubHandler {
         sdv_comms: &Arc<dyn ISdvCommsContext>,
         broker_subscriber_map: &Arc<DashMap<SdvServiceUnitCommsId, BrokerSubscriberInfo>>,
         broker_multipub_subscriber_map: &Arc<DashMap<UnitType, BrokerMultipubSubscriberInfo>>,
+        broker_soa_subscriber_map: &Arc<DashMap<TopicIdentifier, BrokerSoaSubscriberInfo>>,
         translator: &Arc<dyn IBrokerTranslator>,
         someip_comms: &Arc<dyn ISomeIpStackContext>,
     ) {
@@ -812,6 +991,17 @@ impl PubSubHandler {
             )
             .await;
         }
+
+        for entry in broker_soa_subscriber_map.iter() {
+            let soa_subscriber_info = entry.value();
+            Self::poll_single_publication(
+                someip_comms,
+                sdv_comms,
+                translator,
+                PollableSubscriber::Soa(soa_subscriber_info),
+            )
+            .await;
+        }
     }
 
     async fn get_or_create_subscriber<'a>(
@@ -821,6 +1011,7 @@ impl PubSubHandler {
         let subscriber = match subscriber_info {
             PollableSubscriber::Single(info) => &info.subscriber,
             PollableSubscriber::MultiPub(info) => &info.subscriber,
+            PollableSubscriber::Soa(info) => &info.subscriber,
         };
         let mut guarded_subscriber = subscriber.lock().await;
 
@@ -834,6 +1025,9 @@ impl PubSubHandler {
                 PollableSubscriber::MultiPub(info) => {
                     sdv_comms.create_multipub_subscriber(&info.unit_type).await
                 }
+                PollableSubscriber::Soa(info) => {
+                    sdv_comms.create_soa_subscriber(&info.unit_type, &info.topic_name).await
+                }
             };
 
             match new_subscriber_result {
@@ -846,6 +1040,7 @@ impl PubSubHandler {
                             info.service_unit_definition.get_unit_type()
                         }
                         PollableSubscriber::MultiPub(info) => info.unit_type.clone(),
+                        PollableSubscriber::Soa(info) => info.unit_type.clone(),
                     };
 
                     bail!("Failed to create subscriber for unit type {unit_type}: {e:?}, will retry on next poll.");
@@ -1176,6 +1371,33 @@ mod tests {
             panic!("Expected GROUP event mapping type")
         };
         assert_eq!(*stored_service_units, broker_service_units)
+    }
+
+    #[test]
+    fn test_add_topic_mapping_soa() {
+        // GIVEN
+        let mut handler = PubSubHandler::new(
+            Arc::new(MockISdvCommsContext::new()),
+            Arc::new(MockIBrokerTranslator::new()),
+            Duration::from_millis(100),
+        );
+        let sdv_identifier = SdvIdentifier::SoaInfo { soa_identifier: "test-topic".to_string() };
+        let someip_service = create_test_someip_service(1, 1, 1, 0);
+        let topic_mapping_info =
+            SdvTopicMappingInfo::SimpleMapping { someip_event_id: 10, someip_eventgroup_id: 20 };
+
+        // WHEN
+        handler.add_topic_mapping(
+            sdv_identifier.clone(),
+            someip_service,
+            topic_mapping_info.clone(),
+        );
+
+        // THEN
+        assert_eq!(handler.sdv_service_mappings.len(), 1);
+        let stored_info = handler.sdv_service_mappings.get(&sdv_identifier).unwrap();
+        assert_eq!(stored_info.someip_service, someip_service);
+        assert_eq!(stored_info.sdv_topic_mapping_info, topic_mapping_info);
     }
 
     #[tokio::test]
