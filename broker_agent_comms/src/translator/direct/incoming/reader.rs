@@ -130,6 +130,7 @@ pub(crate) trait ISomeIpReader<'input_lt> {
     fn advance_by(&mut self, num_bytes: usize) -> usize;
 }
 
+#[derive(Debug)]
 pub(crate) struct SomeIpReader<'input_lt, B: ByteOrder> {
     input: &'input_lt [u8],
     index: usize,

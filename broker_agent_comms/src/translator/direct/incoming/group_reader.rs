@@ -23,6 +23,7 @@ use crate::translator::direct::{incoming::SomeIpReader, ISomeIpReader};
 // is that fields DO NOT cross over readers, i.e. this reader does not support having a part of a field's
 // data in one reader, and part in the next. In particular, this influences the implementation of
 // `available_for_unchecked_reads`, which only returns the available bytes to read for a single field
+#[derive(Debug)]
 pub(crate) struct SomeIpGroupReader<'input_lt, 'metadata_lt, B: ByteOrder> {
     someip_data: &'input_lt [u8],
     all_field_indices: &'metadata_lt [usize],
@@ -48,10 +49,9 @@ impl<'input_lt, 'metadata_lt, B: ByteOrder> SomeIpGroupReader<'input_lt, 'metada
             })
         } else {
             let first_field = group_part_fields[0];
-            let field_start = *all_field_indices.get(first_field).ok_or_else(||
-                anyhow::Error::msg(format!("Group event metadata refers to non-existent field number! Wanted field number {first_field} but only {} fields exist", all_field_indices.len()))
-            )?;
-            let field_end = *all_field_indices.get(first_field + 1).unwrap_or(&someip_data.len());
+            let (field_start, field_end) =
+                Self::get_safe_field_range(someip_data, all_field_indices, first_field)?;
+
             let current_reader = SomeIpReader::new(&someip_data[field_start..field_end]);
 
             Ok(SomeIpGroupReader {
@@ -62,6 +62,44 @@ impl<'input_lt, 'metadata_lt, B: ByteOrder> SomeIpGroupReader<'input_lt, 'metada
                 current_reader,
             })
         }
+    }
+
+    fn get_safe_field_range(
+        someip_data: &[u8],
+        all_field_indices: &[usize],
+        field_index: usize,
+    ) -> anyhow::Result<(usize, usize)> {
+        let field_start = *all_field_indices.get(field_index).ok_or_else(|| {
+            anyhow::anyhow!(
+                "Group event metadata refers to non-existent field number! Wanted field number {} but only {} fields exist",
+                field_index,
+                all_field_indices.len()
+            )
+        })?;
+        let field_end = *all_field_indices.get(field_index + 1).unwrap_or(&someip_data.len());
+
+        if field_start > someip_data.len() {
+            anyhow::bail!(
+                "Field start index {} exceeds someip_data length {}",
+                field_start,
+                someip_data.len()
+            );
+        }
+        if field_end > someip_data.len() {
+            anyhow::bail!(
+                "Field end index {} exceeds someip_data length {}",
+                field_end,
+                someip_data.len()
+            );
+        }
+        if field_start > field_end {
+            anyhow::bail!(
+                "Field start index {} is greater than field end index {}",
+                field_start,
+                field_end
+            );
+        }
+        Ok((field_start, field_end))
     }
 
     fn check_reader_index(&self) -> anyhow::Result<()> {
@@ -75,11 +113,8 @@ impl<'input_lt, 'metadata_lt, B: ByteOrder> SomeIpGroupReader<'input_lt, 'metada
         self.current_field_index += 1;
         self.check_reader_index()?;
         let current_field = self.group_part_fields[self.current_field_index];
-        let field_start = *self.all_field_indices.get(current_field).ok_or_else(||
-            anyhow::anyhow!("Group event metadata refers to non-existent field number! Wanted field number {current_field} but only {} fields exist", self.all_field_indices.len())
-        )?;
-        let field_end =
-            *self.all_field_indices.get(current_field + 1).unwrap_or(&self.someip_data.len());
+        let (field_start, field_end) =
+            Self::get_safe_field_range(self.someip_data, self.all_field_indices, current_field)?;
 
         self.current_reader = SomeIpReader::new(&self.someip_data[field_start..field_end]);
         Ok(())
@@ -216,13 +251,16 @@ impl<'input_lt, 'metadata_lt, B: ByteOrder> ISomeIpReader<'input_lt>
         let mut sum = 0;
         for i in 0..self.current_field_index {
             let field = self.group_part_fields[i];
-            let field_start = self.all_field_indices[field];
-            let field_end = if field < self.all_field_indices.len() - 1 {
-                self.all_field_indices[field + 1]
-            } else {
-                self.someip_data.len()
+            // Use .get() to safely access field indices - if they don't exist, skip this field
+            let Some(&field_start) = self.all_field_indices.get(field) else {
+                continue;
             };
-            sum += field_end - field_start;
+            let field_end =
+                *self.all_field_indices.get(field + 1).unwrap_or(&self.someip_data.len());
+            // Ensure we don't go beyond someip_data bounds
+            let field_end = field_end.min(self.someip_data.len());
+            let field_start = field_start.min(self.someip_data.len());
+            sum += field_end.saturating_sub(field_start);
         }
         sum += self.current_reader.num_read_bytes();
         sum
@@ -383,5 +421,56 @@ mod tests {
 
         group_reader.available_for_unchecked_reads(4).unwrap();
         assert_eq!(group_reader.read_u32_unchecked(), 0x03040506);
+    }
+
+    #[test]
+    fn test_read_shorter_data_than_metadata() {
+        let data = vec![1, 2, 3]; // Only 3 bytes, but metadata expects 2 fields of 2 bytes each (total 4)
+        let result = SomeIpGroupReader::<BigEndian>::new(&data, &[0, 2], &[0, 1]);
+
+        // Construction might still succeed if only the first field is accessed and it fits
+        if let Ok(mut group_reader) = result {
+            assert_eq!(group_reader.read_u16().unwrap(), 0x0102);
+            // Advancing to the next field should fail because it starts at index 2 and expects 2 bytes, but only 1 remains.
+            assert!(group_reader.read_u16().is_err());
+        }
+    }
+
+    #[test]
+    fn test_construction_fails_if_first_field_out_of_bounds() {
+        let data = vec![1]; // Only 1 byte
+
+        // Metadata says first field starts at 0 and ends at 2.
+        let result = SomeIpGroupReader::<BigEndian>::new(&data, &[0, 2], &[0, 1]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_fails_if_metadata_not_monotonic() {
+        let data = vec![1, 2, 3, 4];
+        // Metadata says first field starts at 2 and ends at 1.
+        let result = SomeIpGroupReader::<BigEndian>::new(&data, &[2, 1], &[0]);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("is greater than field end index"));
+    }
+
+    #[test]
+    fn test_advance_to_invalid_metadata_fails() {
+        let data = vec![1, 2, 3, 4];
+        // First field is valid [0..2], second field is invalid [5..6]
+        let mut group_reader =
+            SomeIpGroupReader::<BigEndian>::new(&data, &[0, 2, 5, 6], &[0, 1]).unwrap();
+
+        assert_eq!(group_reader.read_u16().unwrap(), 0x0102);
+        // Attempting to read more will try to advance to the next field [5..6], which is out of bounds.
+        assert!(group_reader.read_u8().is_err());
+    }
+
+    #[test]
+    fn test_num_read_bytes_with_broken_metadata() {
+        let data = vec![1, 2];
+        // Test that 'new' fails if the first field has invalid indices.
+        let result = SomeIpGroupReader::<BigEndian>::new(&data, &[10, 5, 0, 1], &[0, 1]);
+        assert!(result.is_err());
     }
 }

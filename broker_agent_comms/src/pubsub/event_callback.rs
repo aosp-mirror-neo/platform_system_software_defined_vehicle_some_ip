@@ -93,8 +93,18 @@ impl EventNotificationCallback {
         someip_event: &SomeIpEventSubscriberInfo,
     ) -> binder::Result<()> {
         for (index, publisher_info) in group_publisher_infos.iter().enumerate() {
-            if let Ok(message_part) = &translated_group_events[index] {
-                Self::publish_to_sdv(publisher_info, message_part.get_data(), someip_event).await?;
+            match &translated_group_events[index] {
+                Ok(message_part) => {
+                    Self::publish_to_sdv(publisher_info, message_part.get_data(), someip_event)
+                        .await?;
+                }
+                Err(e) => {
+                    error!(
+                        "Error translating SOME/IP group event part {} for event {someip_event:?} into {}: {e:?}",
+                        index,
+                        publisher_info.get_unit_type()
+                    );
+                }
             }
         }
         Ok(())
