@@ -21,9 +21,11 @@ use someip_config::serde_config::ffi::SomeIpConfig;
 
 use google_sdv_someip::aidl::google::sdv::someip::SomeIpService::SomeIpService;
 
+use vsidl_v1::someip::some_ip_mapping::sdv_type_mapping::service_oriented_mapping::Soa_mapping_type as SoaMappingType;
 use vsidl_v1::someip::some_ip_mapping::sdv_type_mapping::topic::Topic_mapping;
 use vsidl_v1::someip::some_ip_mapping::sdv_type_mapping::Interface_type as SdvInterfaceType;
 use vsidl_v1::someip::some_ip_mapping::sdv_type_mapping::RpcInterface as SdvRpcInterface;
+use vsidl_v1::someip::some_ip_mapping::sdv_type_mapping::ServiceOrientedMapping as VsidlServiceOrientedMapping;
 use vsidl_v1::someip::some_ip_mapping::sdv_type_mapping::SomeIpFFMethod;
 use vsidl_v1::someip::some_ip_mapping::sdv_type_mapping::Topic;
 use vsidl_v1::someip::some_ip_mapping::SdvTypeMapping;
@@ -75,10 +77,16 @@ impl SdvTypeMappingParser {
             return;
         };
 
-        if let protobuf::MessageField(Some(ref _service_oriented_mapping)) =
+        if let protobuf::MessageField(Some(ref service_oriented_mapping)) =
             sdv_type_mapping.service_oriented_mapping
         {
-            // TODO: b/487204223 - implement SOA logic in SOME/IP broker
+            self.process_service_oriented_mapping(
+                &unit_type,
+                service_oriented_mapping,
+                someip_service_instance_info,
+                type_mapping,
+                protocol_mapping,
+            );
         } else {
             self.process_service_unit_mapping(
                 &unit_type,
@@ -90,11 +98,119 @@ impl SdvTypeMappingParser {
         }
     }
 
+    fn add_service_unit_mapping(
+        protocol_mapping: &mut ProtocolMapping,
+        unit_type: &UnitType,
+        mut someip_service_instance_info: SomeIpService,
+        instance_id: u32,
+        sdv_identifier: SdvIdentifier,
+        service_unit_interface: &SdvServiceUnitInterface,
+        ff_methods: Option<&Vec<SomeIpFFMethod>>,
+    ) {
+        let Ok(parsed_instance_id) = u16::try_from(instance_id) else {
+            error!(
+                "Error processing a SOME/IP service instance, instance ID out of range! {}",
+                instance_id
+            );
+            return;
+        };
+        someip_service_instance_info.instance_id = parsed_instance_id;
+
+        let final_service_unit_interface =
+            if let SdvServiceUnitInterface::TOPIC(SdvTopicMappingInfo::FireAndForgetMapping {
+                ..
+            }) = service_unit_interface
+            {
+                if let Some(ff_methods) = ff_methods {
+                    let ff_mapping = Self::get_fire_and_forget_mappings(ff_methods);
+                    SdvServiceUnitInterface::TOPIC(SdvTopicMappingInfo::FireAndForgetMapping {
+                        ff_mapping,
+                    })
+                } else {
+                    // This case should not happen based on current usage
+                    error!("FireAndForgetMapping indicated but no ff_methods provided");
+                    service_unit_interface.clone()
+                }
+            } else {
+                service_unit_interface.clone()
+            };
+
+        protocol_mapping.sdv_service_units.push(SdvServiceUnitMapping {
+            sdv_identifier,
+            unit_type: unit_type.clone(),
+            someip_service_instance_info,
+            service_unit_interface: final_service_unit_interface,
+        });
+    }
+
+    fn process_service_oriented_mapping(
+        &self,
+        unit_type: &UnitType,
+        service_oriented_mapping: &VsidlServiceOrientedMapping,
+        someip_service_instance_info: SomeIpService,
+        type_mapping: &mut TypeMapping,
+        protocol_mapping: &mut ProtocolMapping,
+    ) {
+        let Some(ref soa_mapping_type) = service_oriented_mapping.soa_mapping_type else {
+            error!("Error processing a SDV Service Oriented Mapping, missing mapping_type!");
+            return;
+        };
+        match soa_mapping_type {
+            SoaMappingType::RpcInterfaceMapping(rpc_interface_mapping) => {
+                let rpc_interface = self.process_sdv_rpc(
+                    unit_type,
+                    &rpc_interface_mapping.offered_interface,
+                    type_mapping,
+                );
+                for rpc_channel_mapping in rpc_interface_mapping.rpc_channel_mapping.iter() {
+                    Self::add_service_unit_mapping(
+                        protocol_mapping,
+                        unit_type,
+                        someip_service_instance_info,
+                        rpc_channel_mapping.instance_id,
+                        SdvIdentifier::SoaInfo {
+                            soa_identifier: rpc_channel_mapping.channel.clone(),
+                        },
+                        &rpc_interface,
+                        None,
+                    );
+                }
+            }
+            SoaMappingType::PublicationMapping(publication_mapping) => {
+                let publication_interface = self.process_sdv_topic(
+                    unit_type,
+                    &publication_mapping.offered_topic,
+                    someip_service_instance_info,
+                    protocol_mapping,
+                    type_mapping,
+                );
+                let Some(publication_interface) = publication_interface else {
+                    return;
+                };
+
+                for topic_mapping in publication_mapping.topic_mapping.iter() {
+                    Self::add_service_unit_mapping(
+                        protocol_mapping,
+                        unit_type,
+                        someip_service_instance_info,
+                        topic_mapping.instance_id,
+                        SdvIdentifier::SoaInfo { soa_identifier: topic_mapping.topic.clone() },
+                        &publication_interface,
+                        Some(&topic_mapping.fire_and_forget_method),
+                    );
+                }
+            }
+            _ => {
+                error!("Error processing a SDV Service Oriented Mapping, unknown mapping_type for unit type {unit_type:?}");
+            }
+        }
+    }
+
     fn process_service_unit_mapping(
         &self,
         unit_type: &UnitType,
         sdv_type_mapping: &SdvTypeMapping,
-        mut someip_service_instance_info: SomeIpService,
+        someip_service_instance_info: SomeIpService,
         type_mapping: &mut TypeMapping,
         protocol_mapping: &mut ProtocolMapping,
     ) {
@@ -124,48 +240,23 @@ impl SdvTypeMappingParser {
             return;
         };
 
-        let mut sdv_service_unit_mappings = Vec::new();
         for service_unit_mapping in &sdv_type_mapping.service_unit_mapping {
-            let Ok(instance_id) = u16::try_from(service_unit_mapping.instance_id) else {
-                error!(
-                    "Error processing a SOME/IP service instance, instance ID out of range! {}",
-                    service_unit_mapping.instance_id
-                );
-                continue;
-            };
-            someip_service_instance_info.instance_id = instance_id;
-
             let Some(service_unit_id) =
                 create_sdv_service_unit_id(&service_unit_mapping.service_unit_id)
             else {
                 continue;
             };
 
-            if let SdvServiceUnitInterface::TOPIC(SdvTopicMappingInfo::FireAndForgetMapping {
-                ff_mapping: _,
-            }) = service_unit_interface
-            {
-                let ff_mapping = Self::get_fire_and_forget_mappings(
-                    &service_unit_mapping.fire_and_forget_method,
-                );
-                sdv_service_unit_mappings.push(SdvServiceUnitMapping {
-                    sdv_identifier: SdvIdentifier::ServiceUnitInfo { service_unit_id },
-                    unit_type: unit_type.clone(),
-                    someip_service_instance_info,
-                    service_unit_interface: SdvServiceUnitInterface::TOPIC(
-                        SdvTopicMappingInfo::FireAndForgetMapping { ff_mapping },
-                    ),
-                });
-            } else {
-                sdv_service_unit_mappings.push(SdvServiceUnitMapping {
-                    sdv_identifier: SdvIdentifier::ServiceUnitInfo { service_unit_id },
-                    unit_type: unit_type.clone(),
-                    someip_service_instance_info,
-                    service_unit_interface: service_unit_interface.clone(),
-                });
-            }
+            Self::add_service_unit_mapping(
+                protocol_mapping,
+                unit_type,
+                someip_service_instance_info,
+                service_unit_mapping.instance_id,
+                SdvIdentifier::ServiceUnitInfo { service_unit_id },
+                &service_unit_interface,
+                Some(&service_unit_mapping.fire_and_forget_method),
+            );
         }
-        protocol_mapping.sdv_service_units.append(&mut sdv_service_unit_mappings);
     }
 
     fn process_sdv_rpc(
@@ -339,6 +430,7 @@ impl SdvTypeMappingParser {
 mod tests {
 
     use googletest::prelude::*;
+    use protobuf::text_format;
 
     use vsidl_v1::someip::some_ip_mapping::SdvTypeMapping;
     use vsidl_v1::someip::some_ip_mapping::UnitType as VsidlUnitType;
@@ -979,5 +1071,248 @@ mod tests {
             }
             other => panic!("Expected FireAndForgetMapping, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn process_sdv_type_mapping_detects_soa_mapping_type_publication_mapping_successfully() {
+        // Input SdvTypeMapping proto:
+        let pub_textproto = r#"
+    unit_type {
+        package_name: "com.test.soa.pub"
+        type_name: "SoaPubUnitType"
+    }
+    someip_service_id: 200
+    version_major: 1
+    version_minor: 2
+    service_oriented_mapping {
+        publication_mapping {
+            offered_topic {
+                simple_mapping {
+                    group_id: 10
+                    event_id: 20
+                }
+            }
+            topic_mapping {
+                topic: "test-topic"
+                instance_id: 100
+            }
+        }
+    }
+"#;
+        let sdv_type_mapping: SdvTypeMapping =
+            text_format::parse_from_str(pub_textproto).expect("Failed to parse pub_textproto");
+
+        let sdv_type_parser = SdvTypeMappingParser::new(DEFAULT_SOMEIP_CONFIG);
+        let mut protocol_mapping = ProtocolMapping::default();
+        sdv_type_parser.process_sdv_type_mapping(
+            &sdv_type_mapping,
+            &mut protocol_mapping,
+            &mut TypeMapping::default(),
+        );
+
+        assert_eq!(protocol_mapping.sdv_service_units.len(), 1);
+        let mapping = &protocol_mapping.sdv_service_units[0];
+
+        assert_eq!(
+            mapping.sdv_identifier,
+            SdvIdentifier::SoaInfo { soa_identifier: "test-topic".to_string() }
+        );
+        assert_eq!(
+            mapping.unit_type,
+            UnitType::builder()
+                .set_sdv_package_name("com.test.soa.pub")
+                .set_unit_type_name("SoaPubUnitType")
+                .build()
+                .expect("Failed to build Unit type!")
+        );
+        let expected_someip = SomeIpService {
+            service_id: 200,
+            instance_id: 100,
+            version: SomeIpServiceVersion { major: 1, minor: 2 },
+        };
+        assert_eq!(mapping.someip_service_instance_info, expected_someip);
+        assert_eq!(
+            mapping.service_unit_interface,
+            SdvServiceUnitInterface::TOPIC(SdvTopicMappingInfo::SimpleMapping {
+                someip_eventgroup_id: 10u16,
+                someip_event_id: 20u16,
+            })
+        );
+    }
+
+    #[test]
+    fn process_sdv_type_mapping_detects_soa_mapping_type_rpc_interface_mapping_successfully() {
+        // Input SdvTypeMapping proto:
+        let rpc_textproto = r#"
+    unit_type {
+        package_name: "com.test.soa.rpc"
+        type_name: "SoaRpcUnitType"
+    }
+    someip_service_id: 300
+    version_major: 2
+    version_minor: 1
+    service_oriented_mapping {
+        rpc_interface_mapping {
+            offered_interface {
+                method {
+                    procedure: "SoaProc"
+                    method_id: 50
+                }
+            }
+            rpc_channel_mapping {
+                channel: "test-channel"
+                instance_id: 200
+            }
+        }
+    }
+"#;
+        let sdv_type_mapping: SdvTypeMapping =
+            text_format::parse_from_str(rpc_textproto).expect("Failed to parse rpc_textproto");
+
+        let sdv_type_parser = SdvTypeMappingParser::new(DEFAULT_SOMEIP_CONFIG);
+        let mut protocol_mapping = ProtocolMapping::default();
+        sdv_type_parser.process_sdv_type_mapping(
+            &sdv_type_mapping,
+            &mut protocol_mapping,
+            &mut TypeMapping::default(),
+        );
+
+        assert_eq!(protocol_mapping.sdv_service_units.len(), 1);
+        let mapping = &protocol_mapping.sdv_service_units[0];
+
+        assert_eq!(
+            mapping.sdv_identifier,
+            SdvIdentifier::SoaInfo { soa_identifier: "test-channel".to_string() }
+        );
+        assert_eq!(
+            mapping.unit_type,
+            UnitType::builder()
+                .set_sdv_package_name("com.test.soa.rpc")
+                .set_unit_type_name("SoaRpcUnitType")
+                .build()
+                .expect("Failed to build Unit type!")
+        );
+        let expected_someip = SomeIpService {
+            service_id: 300,
+            instance_id: 200,
+            version: SomeIpServiceVersion { major: 2, minor: 1 },
+        };
+        assert_eq!(mapping.someip_service_instance_info, expected_someip);
+        assert_that!(
+            mapping.service_unit_interface,
+            matches_pattern!(SdvServiceUnitInterface::RPC(unordered_elements_are!(eq(
+                &RpcMethodMappingInfo {
+                    sdv_method_name: "SoaProc".to_string(),
+                    someip_method_id: 50u16
+                }
+            ),)))
+        );
+    }
+
+    #[test]
+    fn process_sdv_type_mapping_detects_soa_mapping_type_fire_and_forget_successfully() {
+        let sdv_type_mapping_proto = r#"
+    unit_type {
+        package_name: "com.test.soa.ff"
+        type_name: "SoaFFUnitType"
+    }
+    someip_service_id: 400
+    version_major: 3
+    version_minor: 0
+    service_oriented_mapping {
+        publication_mapping {
+            offered_topic {
+                someip_ff_methods: true
+            }
+            topic_mapping {
+                topic: "test-ff-topic"
+                instance_id: 300
+                fire_and_forget_method {
+                    service_id: 10
+                    instance_id: 11
+                    version_major: 1
+                    version_minor: 0
+                    method_id: 100
+                }
+            }
+        }
+    }
+"#;
+        let sdv_type_mapping: SdvTypeMapping = text_format::parse_from_str(sdv_type_mapping_proto)
+            .expect("Failed to parse sdv_type_mapping_proto");
+        let sdv_type_parser = SdvTypeMappingParser::new(DEFAULT_SOMEIP_CONFIG);
+        let mut protocol_mapping = ProtocolMapping::default();
+        sdv_type_parser.process_sdv_type_mapping(
+            &sdv_type_mapping,
+            &mut protocol_mapping,
+            &mut TypeMapping::default(),
+        );
+
+        assert_eq!(protocol_mapping.sdv_service_units.len(), 1);
+        let mapping = &protocol_mapping.sdv_service_units[0];
+
+        assert_eq!(
+            mapping.sdv_identifier,
+            SdvIdentifier::SoaInfo { soa_identifier: "test-ff-topic".to_string() }
+        );
+        assert_eq!(
+            mapping.unit_type,
+            UnitType::builder()
+                .set_sdv_package_name("com.test.soa.ff")
+                .set_unit_type_name("SoaFFUnitType")
+                .build()
+                .expect("Valid UnitType should build successfully")
+        );
+        let expected_someip = SomeIpService {
+            service_id: 400,
+            instance_id: 300,
+            version: SomeIpServiceVersion { major: 3, minor: 0 },
+        };
+        assert_eq!(mapping.someip_service_instance_info, expected_someip);
+
+        match &mapping.service_unit_interface {
+            SdvServiceUnitInterface::TOPIC(SdvTopicMappingInfo::FireAndForgetMapping {
+                ff_mapping,
+            }) => {
+                assert_eq!(ff_mapping.len(), 1);
+                let expected_ff_method = SomeIpMethod {
+                    someip_service: SomeIpService {
+                        service_id: 10u16,
+                        instance_id: 11u16,
+                        version: SomeIpServiceVersion { major: 1i8, minor: 0 },
+                    },
+                    someip_method_id: 100u16,
+                };
+                assert_eq!(ff_mapping[0], expected_ff_method);
+            }
+            other => panic!("Expected FireAndForgetMapping, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn process_sdv_type_mapping_handles_missing_soa_mapping_type() {
+        let invalid_sdv_type_mapping_proto = r#"
+          unit_type {
+            package_name: "com.test.soa.empty"
+            type_name: "SoaEmptyUnitType"
+          }
+          someip_service_id: 500
+          version_major: 4
+          version_minor: 0
+          service_oriented_mapping { }
+        "#;
+
+        let sdv_type_mapping = text_format::parse_from_str(invalid_sdv_type_mapping_proto)
+            .expect("Failed to parse invalid_sdv_type_mapping_proto");
+
+        let sdv_type_parser = SdvTypeMappingParser::new(DEFAULT_SOMEIP_CONFIG);
+        let mut protocol_mapping = ProtocolMapping::default();
+        sdv_type_parser.process_sdv_type_mapping(
+            &sdv_type_mapping,
+            &mut protocol_mapping,
+            &mut TypeMapping::default(),
+        );
+
+        assert_eq!(protocol_mapping.sdv_service_units.len(), 0);
     }
 }
