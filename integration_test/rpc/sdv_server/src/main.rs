@@ -27,8 +27,8 @@ mod tests {
     use sdv_comms::id::ServiceFqin;
     use sdv_comms::ContextRef;
 
-    use com_sdv_google_sample_someip_test_hello_rpc::Interface as TestHello;
-    use sdv_mw_rs_com_sdv_google_sample_someip_sdv_integration_test_server::SdvIntegrationTestServer;
+    use com_android_sdv_sample_someip_test_hello_rpc::Interface as TestHello;
+    use sdv_mw_rs_com_android_sdv_sample_someip_sdv_integration_test_server::SdvIntegrationTestServer;
     use sdv_mw_rs_sdv_comms::SdvComms;
     use someip_messages_catalog::test_hello_rpc::TestHelloRequest;
     use someip_messages_catalog::test_hello_rpc::TestHelloResponse;
@@ -105,7 +105,7 @@ mod tests {
     fn create_context() -> ContextRef {
         let fqin = ServiceFqin::builder()
             .sdv_vm_name("vm")
-            .sdv_package_name("com.sdv.google.sample.someip")
+            .sdv_package_name("com.android.sdv.sample.someip")
             .service_bundle_name("SdvIntegrationTestServer")
             .service_instance_name("instance1")
             .build()

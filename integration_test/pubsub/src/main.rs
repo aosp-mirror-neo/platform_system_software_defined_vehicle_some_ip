@@ -28,7 +28,7 @@ mod tests {
 
     use sdv_comms::id::ServiceFqin;
     use sdv_comms::ContextRef;
-    use sdv_mw_rs_com_sdv_google_sample_someip_test_client::{
+    use sdv_mw_rs_com_android_sdv_sample_someip_test_client::{
         publisher, subscriber, TestClient, UnitType,
     };
     use sdv_mw_rs_comms::SubscribeOptions;
@@ -250,7 +250,7 @@ mod tests {
     fn create_context() -> ContextRef {
         let fqin = ServiceFqin::builder()
             .sdv_vm_name("vm")
-            .sdv_package_name("com.sdv.google.sample.someip")
+            .sdv_package_name("com.android.sdv.sample.someip")
             .service_bundle_name("TestClient")
             .service_instance_name("instance1")
             .build()

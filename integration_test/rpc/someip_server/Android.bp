@@ -25,8 +25,8 @@ rust_test {
     ],
     srcs: ["src/main.rs"],
     rustlibs: [
-        "libsdv_mw_rs_com_sdv_google_sample_someip_hey_service_client",
-        "libcom_sdv_someip_hey_interface_rpc_rs",
+        "libsdv_mw_rs_com_android_sdv_sample_someip_hey_service_client",
+        "libcom_android_sdv_someip_hey_interface_rpc_rs",
         "libsdv_mw_rs_sdv_comms",
         "libsdv_mw_rs_comms",
         "libsdv_comms_rs",

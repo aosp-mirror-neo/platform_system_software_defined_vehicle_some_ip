@@ -36,7 +36,7 @@ mod tests {
 
     use someip_messages_catalog::side_mirror::SideMirrorPosition;
 
-    use sdv_mw_rs_com_sdv_google_sample_someip_side_mirror_test_client::{
+    use sdv_mw_rs_com_android_sdv_sample_someip_side_mirror_test_client::{
         subscriber, SideMirrorTestClient, UnitType,
     };
 
@@ -189,7 +189,7 @@ mod tests {
     fn create_context() -> ContextRef {
         let fqin = ServiceFqin::builder()
             .sdv_vm_name("vm")
-            .sdv_package_name("com.sdv.google.sample.someip")
+            .sdv_package_name("com.android.sdv.sample.someip")
             .service_bundle_name("SideMirrorTestClient")
             .service_instance_name("instance1")
             .build()

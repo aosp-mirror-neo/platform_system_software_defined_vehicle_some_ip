@@ -14,7 +14,7 @@
 # proto-file: //system/software_defined_vehicle/core_services/vsidl/protos/sdv/someip/v1/someip.proto
 # proto-message: SomeIpMapping
 
-package: "com.sdv.google.sample.someip"
+package: "com.android.sdv.sample.someip"
 
 some_ip_mapping {
   someip_service_mapping {
@@ -23,7 +23,7 @@ some_ip_mapping {
     version_minor: 0x0
     instance {
       instance_id: 0x1000
-      sdv_service_unit_parameterization {key: 0 value: "com-sdv-google-sample-someip-cuj26-some-ip-payload-unique"}
+      sdv_service_unit_parameterization {key: 0 value: "com-android-sdv-sample-someip-cuj26-some-ip-payload-unique"}
     }
     instance_impl {
       offered_event {
@@ -31,7 +31,7 @@ some_ip_mapping {
         event_id: 0x8510
         simple_event {
           sdv_unit_type {
-            package_name: "com.sdv.google.sample.someip"
+            package_name: "com.android.sdv.sample.someip"
             service_bundle_name: "ServiceBundleCuj26"
             type_name: "Cuj26SomeIpPayload"
           }

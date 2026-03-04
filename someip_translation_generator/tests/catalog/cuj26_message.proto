@@ -14,7 +14,7 @@
 
 syntax = "proto3";
 
-package com.sdv.google.sample.someip;
+package com.android.sdv.sample.someip;
 
 message Cuj26SomeIpPayload {
   string value = 1;
