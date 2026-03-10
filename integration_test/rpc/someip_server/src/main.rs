@@ -27,8 +27,8 @@ mod tests {
     use sdv_mw_rs_comms::RpcClient;
     use sdv_mw_rs_sdv_comms::SdvComms;
 
-    use com_sdv_someip_hey_interface_rpc::Client;
-    use sdv_mw_rs_com_sdv_google_sample_someip_hey_service_client::HeyServiceClient;
+    use com_android_sdv_someip_hey_interface_rpc::Client;
+    use sdv_mw_rs_com_android_sdv_sample_someip_hey_service_client::HeyServiceClient;
     use sdv_someip_integration_test::run_vsomeip_server;
     use someip_messages_catalog::hey_rpc::HeyMessageRequest;
 
@@ -67,7 +67,7 @@ mod tests {
                 match service
                     .create_rpc_client(
                         UnitName::builder()
-                            .package_name("com.sdv.someip")
+                            .package_name("com.android.sdv.someip")
                             .bundle_name("SomeIpBroker")
                             .service_unit_name(Client::DEFAULT_UNIT_NAME)
                             .build()
@@ -100,7 +100,7 @@ mod tests {
     fn create_context() -> ContextRef {
         let fqin = ServiceFqin::builder()
             .sdv_vm_name("vm")
-            .sdv_package_name("com.sdv.google.sample.someip")
+            .sdv_package_name("com.android.sdv.sample.someip")
             .service_bundle_name("HeyServiceClient")
             .service_instance_name("instance1")
             .build()

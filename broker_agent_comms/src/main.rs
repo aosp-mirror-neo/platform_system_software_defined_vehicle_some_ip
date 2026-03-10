@@ -56,7 +56,7 @@ use crate::translator::{BrokerTranslator, IBrokerTranslator};
 use crate::translator::{DirectTranslator, SomeIpDescriptorStore};
 
 const TEMP_VM_NAME: &str = "vm";
-const BROKER_PACKAGE: &str = "com.sdv.someip";
+const BROKER_PACKAGE: &str = "com.android.sdv.someip";
 const BROKER_BUNDLE: &str = "SomeIpBroker";
 
 const BROKER_CONFIG_PATH_PROP: &str = "ro.sdv.someip.broker_config";

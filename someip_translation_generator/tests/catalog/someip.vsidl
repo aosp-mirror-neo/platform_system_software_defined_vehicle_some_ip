@@ -23,8 +23,8 @@ some_ip_mapping {
     version_minor: 0x0
     instance {
       instance_id: 0x1000
-      sdv_service_unit_parameterization {key: 2 value: "com-sdv-someip-deep-nested-struct-unique"}
-      sdv_service_unit_parameterization {key: 3 value: "com-sdv-someip-flattened-struct-unique"}
+      sdv_service_unit_parameterization {key: 2 value: "com-android-sdv-someip-deep-nested-struct-unique"}
+      sdv_service_unit_parameterization {key: 3 value: "com-android-sdv-someip-flattened-struct-unique"}
     }
     instance_impl {
       offered_event {

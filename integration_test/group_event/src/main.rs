@@ -33,7 +33,7 @@ mod tests {
     use someip_messages_catalog::first_part::FirstPart;
     use someip_messages_catalog::second_part::SecondPart;
 
-    use sdv_mw_rs_com_sdv_google_sample_someip_someip_group_event_consumer::{
+    use sdv_mw_rs_com_android_sdv_sample_someip_someip_group_event_consumer::{
         subscriber, SomeipGroupEventConsumer, UnitType,
     };
 
@@ -168,7 +168,7 @@ mod tests {
     fn create_context() -> ContextRef {
         let fqin = ServiceFqin::builder()
             .sdv_vm_name("vm")
-            .sdv_package_name("com.sdv.google.sample.someip")
+            .sdv_package_name("com.android.sdv.sample.someip")
             .service_bundle_name("SomeipGroupEventConsumer")
             .service_instance_name("instance1")
             .build()

@@ -27,7 +27,7 @@ mod tests {
     use sdv::comms::ContextRef;
     use sdv::mw::{Availability, SubscribeOptions};
 
-    use sdv_mw_rs_com_sdv_google_sample_someip_object_sensor_consumer::{
+    use sdv_mw_rs_com_android_sdv_sample_someip_object_sensor_consumer::{
         subscriber::Variant, ObjectSensorConsumer,
     };
     use sdv_someip_integration_test::run_vsomeip_server;
@@ -175,7 +175,7 @@ mod tests {
     fn create_context() -> ContextRef {
         let fqin = ServiceFqin::builder()
             .sdv_vm_name("vm")
-            .sdv_package_name("com.sdv.google.sample.someip")
+            .sdv_package_name("com.android.sdv.sample.someip")
             .service_bundle_name("ByteForwardingConsumer")
             .service_instance_name("instance1")
             .build()

@@ -35,9 +35,9 @@ pub fn deserialize(
     os: &mut CodedOutputStream,
 ) -> SdvStatusCode {
     match unit_type.to_string().as_str() {
-        "com.sdv.google.sample.someip.ServiceBundleCuj26#Cuj26SomeIpPayload" => {
+        "com.android.sdv.sample.someip.ServiceBundleCuj26#Cuj26SomeIpPayload" => {
             write_message_to_buf(
-                deserialize_com_sdv_google_sample_someip_cuj26someippayload(
+                deserialize_com_android_sdv_sample_someip_cuj26someippayload(
                     deserializer,
                 ),
                 os,
@@ -81,7 +81,7 @@ fn write_message_to_buf<M: protobuf::Message>(
     }
 }
 #[inline(always)]
-pub fn deserialize_com_sdv_google_sample_someip_cuj26someippayload(
+pub fn deserialize_com_android_sdv_sample_someip_cuj26someippayload(
     deserializer: &mut dyn ISomeIpDeserializer,
 ) -> SdvResult<Cuj26SomeIpPayload> {
     let value_byte_len = deserializer.deserialize_u8()?.into();

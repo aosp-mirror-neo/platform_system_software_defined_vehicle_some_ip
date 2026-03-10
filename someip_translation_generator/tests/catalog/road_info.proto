@@ -13,7 +13,7 @@
 // limitations under the License.
 syntax = "proto3";
 
-package com.sdv.someip;
+package com.android.sdv.someip;
 
 message RoadInfo {
   uint32 num_vehicles = 1;

@@ -1046,7 +1046,7 @@ pub mod tests {
             .expect("Service FQIN should be created");
 
         let unit_type = UnitType::builder()
-            .set_sdv_package_name("com.sdv.someip")
+            .set_sdv_package_name("com.android.sdv.someip")
             .set_service_bundle_name("SomeIpBroker")
             .set_unit_type_name("MessageOne")
             .build()
@@ -1164,7 +1164,7 @@ pub mod tests {
             .expect("Service FQIN should be created");
 
         let unit_type = UnitType::builder()
-            .set_sdv_package_name("com.sdv.someip")
+            .set_sdv_package_name("com.android.sdv.someip")
             .set_service_bundle_name("SomeIpBroker")
             .set_unit_type_name("MessageOne")
             .build()

@@ -26,7 +26,7 @@ rust_test {
     srcs: ["src/main.rs"],
     rustlibs: [
         "libsdv_rs",
-        "libsdv_mw_rs_com_sdv_google_sample_someip_object_sensor_consumer",
+        "libsdv_mw_rs_com_android_sdv_sample_someip_object_sensor_consumer",
         "libbinder_rs",
         "libfutures",
         "libprotobuf",

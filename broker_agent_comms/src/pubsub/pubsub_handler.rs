@@ -1205,7 +1205,7 @@ mod tests {
 
         let broker_fqin = ServiceFqin::builder()
             .sdv_vm_name("vm")
-            .sdv_package_name("com.sdv.someip")
+            .sdv_package_name("com.android.sdv.someip")
             .service_bundle_name("SomeIpBroker")
             .service_instance_name("default")
             .build()
