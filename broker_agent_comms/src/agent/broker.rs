@@ -129,19 +129,22 @@ impl SomeIpBroker {
             .ok_or(anyhow::Error::msg("Unable to get a mutable refererence to the RPC handler"))?;
 
         for sdv_service_unit in &self.protocol_mapping.sdv_service_units {
-            sd_handler.add_sdv_handle(sdv_service_unit.service_unit_info.clone());
+            sd_handler.add_sdv_handle(
+                sdv_service_unit.sdv_identifier.clone(),
+                sdv_service_unit.unit_type.clone(),
+            );
 
             match &sdv_service_unit.service_unit_interface {
                 SdvServiceUnitInterface::TOPIC(topic_mapping_info) => {
                     pubsub_handler.add_topic_mapping(
-                        sdv_service_unit.service_unit_info.clone(),
+                        sdv_service_unit.sdv_identifier.clone(),
                         sdv_service_unit.someip_service_instance_info,
                         topic_mapping_info.clone(),
                     );
                 }
                 SdvServiceUnitInterface::RPC(rpc_mapping_info) => {
                     rpc_handler.add_sdv_rpc_mapping(
-                        sdv_service_unit.service_unit_info.clone(),
+                        sdv_service_unit.sdv_identifier.clone(),
                         sdv_service_unit.someip_service_instance_info,
                         rpc_mapping_info.clone(),
                     );
@@ -211,7 +214,7 @@ mod tests {
         service_unit_interface: SdvServiceUnitInterface,
     ) -> SdvServiceUnitMapping {
         SdvServiceUnitMapping {
-            service_unit_info: SdvServiceUnitInfo {
+            sdv_identifier: SdvIdentifier::ServiceUnitInfo {
                 service_unit_id: SdvServiceUnitId {
                     service_fqin: ServiceFqinInternal {
                         sdv_vm_name: String::from("test_vm_name").into(),
@@ -221,13 +224,13 @@ mod tests {
                     },
                     service_unit_name: "test_service_unit".to_string(),
                 },
-                unit_type: UnitType::builder()
-                    .set_sdv_package_name("com.test.package")
-                    .set_service_bundle_name("TestBundle")
-                    .set_unit_type_name("TestUnitType")
-                    .build()
-                    .unwrap(),
             },
+            unit_type: UnitType::builder()
+                .set_sdv_package_name("com.test.package")
+                .set_service_bundle_name("TestBundle")
+                .set_unit_type_name("TestUnitType")
+                .build()
+                .unwrap(),
             someip_service_instance_info: SomeIpService {
                 service_id: 2,
                 instance_id: 4,
@@ -331,6 +334,12 @@ mod tests {
             create_default_sdv_service_mapping(service_unit_interface.clone());
         protocol_mapping.sdv_service_units.push(sdv_service_unit_mapping.clone());
 
+        let SdvIdentifier::ServiceUnitInfo { service_unit_id } =
+            sdv_service_unit_mapping.sdv_identifier
+        else {
+            panic!("Unexpected identifier type")
+        };
+
         let event_mapping_info = create_someip_event_mapping(
             1,
             2,
@@ -351,7 +360,7 @@ mod tests {
         pubsub_handler
             .expect_add_topic_mapping()
             .with(
-                eq(sdv_service_unit_mapping.service_unit_info),
+                eq(SdvIdentifier::ServiceUnitInfo { service_unit_id }),
                 eq(sdv_service_unit_mapping.someip_service_instance_info),
                 eq(simple_topic_mapping),
             )
@@ -424,12 +433,7 @@ mod tests {
         };
         let broker_service_unit = BrokerServiceUnit {
             service_unit_name: "service_unit_name".to_string(),
-            unit_type: UnitType::builder()
-                .set_sdv_package_name("com.test_package")
-                .set_service_bundle_name("TestBundle")
-                .set_unit_type_name("TestUnitType")
-                .build()
-                .expect("Unable to build unit type"),
+            unit_type: sdv_service_unit_mapping.unit_type.clone(),
         };
 
         let someip_rpc_mapping_info = SomeIpRpcMappingInfo {
@@ -442,10 +446,16 @@ mod tests {
         );
         protocol_mapping.someip_service_instances.push(someip_service_mapping.clone());
 
+        let SdvIdentifier::ServiceUnitInfo { service_unit_id } =
+            &sdv_service_unit_mapping.sdv_identifier
+        else {
+            panic!("Unexpected identifier type")
+        };
+
         rpc_handler
             .expect_add_sdv_rpc_mapping()
             .with(
-                eq(sdv_service_unit_mapping.service_unit_info),
+                eq(SdvIdentifier::ServiceUnitInfo { service_unit_id: service_unit_id.clone() }),
                 eq(sdv_service_unit_mapping.someip_service_instance_info),
                 eq(sdv_rpc_method_infos),
             )
@@ -501,12 +511,282 @@ mod tests {
 
         let broker_service_unit = BrokerServiceUnit {
             service_unit_name: "service_unit_name".to_string(),
+            unit_type: sdv_service_unit_mapping.unit_type.clone(),
+        };
+
+        let someip_rpc_mapping_info =
+            SomeIpRpcMappingInfo { broker_service_unit, rpc_method_infos: vec![] };
+        let someip_service_mapping = create_default_someip_service_mapping(
+            Vec::new(),
+            vec![someip_rpc_mapping_info.clone()],
+        );
+        protocol_mapping.someip_service_instances.push(someip_service_mapping.clone());
+
+        rpc_handler.expect_add_sdv_rpc_mapping().times(1).return_const(());
+        rpc_handler.expect_add_someip_rpc_mapping().times(1).return_const(());
+
+        let SdvIdentifier::ServiceUnitInfo { service_unit_id } =
+            sdv_service_unit_mapping.sdv_identifier
+        else {
+            panic!("Unexpected identifier type")
+        };
+
+        sd_handler
+            .expect_add_sdv_handle()
+            .with(
+                eq(SdvIdentifier::ServiceUnitInfo { service_unit_id }),
+                eq(sdv_service_unit_mapping.unit_type),
+            )
+            .times(1)
+            .return_const(());
+        sd_handler
+            .expect_add_someip_handle()
+            .with(eq(someip_service_mapping.someip_service_instance_info))
+            .times(1)
+            .return_const(());
+
+        let mut broker = SomeIpBroker {
+            someip_context_factory: Box::new(someip_context_factory),
+            protocol_mapping,
+            sd_handler: Arc::new(sd_handler),
+            pubsub_handler: Arc::new(pubsub_handler),
+            rpc_handler: Arc::new(rpc_handler),
+            availability_message_factory: Box::new(availability_message_factory),
+        };
+        let _ = broker.start(None).await;
+    }
+
+    fn create_default_sdv_soa_service_mapping(
+        service_unit_interface: SdvServiceUnitInterface,
+    ) -> SdvServiceUnitMapping {
+        SdvServiceUnitMapping {
+            sdv_identifier: SdvIdentifier::SoaInfo {
+                soa_identifier: "test-soa-identifier".to_string(),
+            },
             unit_type: UnitType::builder()
-                .set_sdv_package_name("com.test_package")
+                .set_sdv_package_name("com.test.package")
                 .set_service_bundle_name("TestBundle")
                 .set_unit_type_name("TestUnitType")
                 .build()
-                .expect("Unable to build unit type"),
+                .unwrap(),
+            someip_service_instance_info: SomeIpService {
+                service_id: 2,
+                instance_id: 4,
+                version: SomeIpServiceVersion { major: 2, minor: 1 },
+            },
+            service_unit_interface,
+        }
+    }
+
+    #[tokio::test]
+    async fn broker_start_populates_pubsub_handler_correctly_soa() {
+        let mut someip_context_factory = MockISomeIpStackContextFactory::new();
+        let mut availability_message_factory = MockIAvailabilityMessageFactory::new();
+        let mut pubsub_handler = MockIPubSubHandler::new();
+        let mut rpc_handler = MockIRpcHandler::new();
+        let mut sd_handler = MockIServiceDiscoveryHandler::new();
+
+        set_default_expectations(
+            &mut someip_context_factory,
+            &mut availability_message_factory,
+            &mut pubsub_handler,
+            &mut rpc_handler,
+            &mut sd_handler,
+        );
+
+        let mut protocol_mapping = ProtocolMapping::default();
+        let simple_topic_mapping =
+            SdvTopicMappingInfo::SimpleMapping { someip_event_id: 3, someip_eventgroup_id: 15 };
+        let service_unit_interface = SdvServiceUnitInterface::TOPIC(simple_topic_mapping.clone());
+
+        let sdv_service_unit_mapping =
+            create_default_sdv_soa_service_mapping(service_unit_interface.clone());
+        protocol_mapping.sdv_service_units.push(sdv_service_unit_mapping.clone());
+
+        let SdvIdentifier::SoaInfo { soa_identifier } =
+            sdv_service_unit_mapping.sdv_identifier.clone()
+        else {
+            panic!("Unexpected identifier type")
+        };
+
+        let event_mapping_info = create_someip_event_mapping(
+            1,
+            2,
+            SomeIpEventMappingType::SIMPLE(Box::new(BrokerServiceUnit {
+                service_unit_name: soa_identifier.to_string(),
+                unit_type: UnitType::builder()
+                    .set_sdv_package_name("com.test.package")
+                    .set_service_bundle_name("TestBundle")
+                    .set_unit_type_name("TestUnitType")
+                    .build()
+                    .expect("Unable to build unit type"),
+            })),
+        );
+        let someip_service_mapping =
+            create_default_someip_service_mapping(vec![event_mapping_info.clone()], Vec::new());
+        protocol_mapping.someip_service_instances.push(someip_service_mapping.clone());
+
+        pubsub_handler
+            .expect_add_topic_mapping()
+            .with(
+                eq(SdvIdentifier::SoaInfo { soa_identifier }),
+                eq(sdv_service_unit_mapping.someip_service_instance_info),
+                eq(simple_topic_mapping),
+            )
+            .times(1)
+            .return_const(());
+
+        pubsub_handler
+            .expect_add_event_mapping()
+            .with(
+                eq(someip_service_mapping.someip_service_instance_info),
+                eq(vec![event_mapping_info]),
+            )
+            .times(1)
+            .return_const(());
+
+        sd_handler.expect_add_sdv_handle().times(1).return_const(());
+        sd_handler.expect_add_someip_handle().times(1).return_const(());
+
+        let mut broker = SomeIpBroker {
+            someip_context_factory: Box::new(someip_context_factory),
+            protocol_mapping,
+            sd_handler: Arc::new(sd_handler),
+            pubsub_handler: Arc::new(pubsub_handler),
+            rpc_handler: Arc::new(rpc_handler),
+            availability_message_factory: Box::new(availability_message_factory),
+        };
+        let _ = broker.start(None).await;
+    }
+
+    #[tokio::test]
+    async fn broker_start_populates_rpc_handler_correctly_soa() {
+        let mut someip_context_factory = MockISomeIpStackContextFactory::new();
+        let mut availability_message_factory = MockIAvailabilityMessageFactory::new();
+        let mut pubsub_handler = MockIPubSubHandler::new();
+        let mut rpc_handler = MockIRpcHandler::new();
+        let mut sd_handler = MockIServiceDiscoveryHandler::new();
+
+        set_default_expectations(
+            &mut someip_context_factory,
+            &mut availability_message_factory,
+            &mut pubsub_handler,
+            &mut rpc_handler,
+            &mut sd_handler,
+        );
+
+        let mut protocol_mapping = ProtocolMapping::default();
+        let sdv_rpc_method1 = RpcMethodMappingInfo {
+            sdv_method_name: "sdv_rpc_method1".to_string(),
+            someip_method_id: 1,
+        };
+        let sdv_rpc_method2 = RpcMethodMappingInfo {
+            sdv_method_name: "sdv_rpc_method2".to_string(),
+            someip_method_id: 2,
+        };
+        let sdv_rpc_method_infos = vec![sdv_rpc_method1, sdv_rpc_method2];
+
+        let service_unit_interface = SdvServiceUnitInterface::RPC(sdv_rpc_method_infos.clone());
+
+        let sdv_service_unit_mapping =
+            create_default_sdv_soa_service_mapping(service_unit_interface.clone());
+        protocol_mapping.sdv_service_units.push(sdv_service_unit_mapping.clone());
+
+        let SdvIdentifier::SoaInfo { soa_identifier } =
+            sdv_service_unit_mapping.sdv_identifier.clone()
+        else {
+            panic!("Unexpected identifier type")
+        };
+
+        let someip_rpc_method1 = RpcMethodMappingInfo {
+            sdv_method_name: "someip_rpc_method1".to_string(),
+            someip_method_id: 10,
+        };
+        let someip_rpc_method2 = RpcMethodMappingInfo {
+            sdv_method_name: "someip_rpc_method2".to_string(),
+            someip_method_id: 20,
+        };
+        let broker_service_unit = BrokerServiceUnit {
+            service_unit_name: soa_identifier.clone(),
+            unit_type: sdv_service_unit_mapping.unit_type.clone(),
+        };
+
+        let someip_rpc_mapping_info = SomeIpRpcMappingInfo {
+            broker_service_unit,
+            rpc_method_infos: vec![someip_rpc_method1.clone(), someip_rpc_method2.clone()],
+        };
+        let someip_service_mapping = create_default_someip_service_mapping(
+            Vec::new(),
+            vec![someip_rpc_mapping_info.clone()],
+        );
+        protocol_mapping.someip_service_instances.push(someip_service_mapping.clone());
+
+        rpc_handler
+            .expect_add_sdv_rpc_mapping()
+            .with(
+                eq(SdvIdentifier::SoaInfo { soa_identifier }),
+                eq(sdv_service_unit_mapping.someip_service_instance_info),
+                eq(sdv_rpc_method_infos),
+            )
+            .times(1)
+            .return_const(());
+
+        rpc_handler
+            .expect_add_someip_rpc_mapping()
+            .with(
+                eq(someip_service_mapping.someip_service_instance_info),
+                eq(vec![someip_rpc_mapping_info]),
+            )
+            .times(1)
+            .return_const(());
+
+        sd_handler.expect_add_sdv_handle().times(1).return_const(());
+        sd_handler.expect_add_someip_handle().times(1).return_const(());
+
+        let mut broker = SomeIpBroker {
+            someip_context_factory: Box::new(someip_context_factory),
+            protocol_mapping,
+            sd_handler: Arc::new(sd_handler),
+            pubsub_handler: Arc::new(pubsub_handler),
+            rpc_handler: Arc::new(rpc_handler),
+            availability_message_factory: Box::new(availability_message_factory),
+        };
+        let _ = broker.start(None).await;
+    }
+
+    #[tokio::test]
+    async fn broker_start_populates_sd_handler_correctly_soa() {
+        let mut someip_context_factory = MockISomeIpStackContextFactory::new();
+        let mut availability_message_factory = MockIAvailabilityMessageFactory::new();
+        let mut pubsub_handler = MockIPubSubHandler::new();
+        let mut rpc_handler = MockIRpcHandler::new();
+        let mut sd_handler = MockIServiceDiscoveryHandler::new();
+
+        set_default_expectations(
+            &mut someip_context_factory,
+            &mut availability_message_factory,
+            &mut pubsub_handler,
+            &mut rpc_handler,
+            &mut sd_handler,
+        );
+
+        let mut protocol_mapping = ProtocolMapping::default();
+
+        let service_unit_interface = SdvServiceUnitInterface::RPC(vec![]);
+
+        let sdv_service_unit_mapping =
+            create_default_sdv_soa_service_mapping(service_unit_interface.clone());
+        protocol_mapping.sdv_service_units.push(sdv_service_unit_mapping.clone());
+
+        let SdvIdentifier::SoaInfo { soa_identifier } =
+            sdv_service_unit_mapping.sdv_identifier.clone()
+        else {
+            panic!("Unexpected identifier type")
+        };
+
+        let broker_service_unit = BrokerServiceUnit {
+            service_unit_name: soa_identifier.clone(),
+            unit_type: sdv_service_unit_mapping.unit_type.clone(),
         };
 
         let someip_rpc_mapping_info =
@@ -522,7 +802,10 @@ mod tests {
 
         sd_handler
             .expect_add_sdv_handle()
-            .with(eq(sdv_service_unit_mapping.service_unit_info))
+            .with(
+                eq(SdvIdentifier::SoaInfo { soa_identifier }),
+                eq(sdv_service_unit_mapping.unit_type),
+            )
             .times(1)
             .return_const(());
         sd_handler

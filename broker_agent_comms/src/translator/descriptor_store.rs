@@ -132,7 +132,7 @@ impl SomeIpDescriptorStore {
                     let rpc_descriptor = match config_provider
                         .get_rpc_method_descriptor(
                             broker_fqin,
-                            &service_unit.service_unit_info.unit_type,
+                            &service_unit.unit_type,
                             &rpc_info.sdv_method_name,
                         )
                         .await
@@ -141,7 +141,7 @@ impl SomeIpDescriptorStore {
                         Err(e) => {
                             log::error!(
                                     "Unable to build fetch rpc descriptor for unit type {:?} and method {:?}: {e}",
-                                    service_unit.service_unit_info.unit_type,
+                                    service_unit.unit_type,
                                     rpc_info.sdv_method_name
                                 );
                             continue;
@@ -154,9 +154,8 @@ impl SomeIpDescriptorStore {
                         rpc_info.someip_method_id,
                         RpcMode::Request,
                     );
-                    let Some(rpc_mapping) = type_mapping
-                        .rpc_type_mapping
-                        .get(&service_unit.service_unit_info.unit_type)
+                    let Some(rpc_mapping) =
+                        type_mapping.rpc_type_mapping.get(&service_unit.unit_type)
                     else {
                         log::error!("Unable to find SOME/IP type mapping for rpc interface {id:?}");
                         return;
@@ -1017,7 +1016,7 @@ mod tests {
             .unwrap();
 
         let sdv_service_unit = SdvServiceUnitMapping {
-            service_unit_info: crate::agent::protocol_mapping::SdvServiceUnitInfo {
+            sdv_identifier: crate::agent::protocol_mapping::SdvIdentifier::ServiceUnitInfo {
                 service_unit_id: crate::agent::protocol_mapping::SdvServiceUnitId {
                     service_fqin: crate::agent::protocol_mapping::ServiceFqinInternal {
                         sdv_vm_name: None,
@@ -1027,8 +1026,8 @@ mod tests {
                     },
                     service_unit_name: "c".to_string(),
                 },
-                unit_type: unit_type.clone(),
             },
+            unit_type: unit_type.clone(),
             someip_service_instance_info: SomeIpService {
                 service_id,
                 instance_id: 1,

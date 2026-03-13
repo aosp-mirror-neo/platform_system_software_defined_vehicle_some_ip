@@ -39,8 +39,7 @@ use sdv_comms::dt::SubscriberOptions;
 use sdv_comms::id::UnitIdentifier;
 use sdv_comms::sd::UnitRegistrationArgs;
 
-use crate::agent::protocol_mapping::SdvServiceUnitId;
-use crate::agent::protocol_mapping::SdvServiceUnitInfo;
+use crate::agent::protocol_mapping::SdvIdentifier;
 use crate::agent::AvailabilityMessage;
 use crate::agent::IAvailabilityNotifier;
 use crate::agent::ServiceType;
@@ -54,7 +53,7 @@ pub(crate) trait ISdvCommsContext: Sync + Send {
     /// `multipub_types`, and trigger notification using `availability_notifiers`
     async fn listen_for_unit_type_availability_changes(
         &self,
-        service_unit_infos: Vec<SdvServiceUnitInfo>,
+        service_unit_infos: Vec<(SdvIdentifier, UnitType)>,
         multipub_types: Vec<UnitType>,
         availability_notifiers: Vec<Box<dyn IAvailabilityNotifier>>,
     );
@@ -116,13 +115,13 @@ impl SdvCommsContext {
         &self,
         sud: ServiceUnitDefinition,
         availability_notifiers: &Vec<Box<dyn IAvailabilityNotifier>>,
-        service_units_by_type: &HashMap<UnitType, Vec<SdvServiceUnitId>>,
+        sdv_identifiers_by_type: &HashMap<UnitType, Vec<SdvIdentifier>>,
         multipub_types: &HashSet<UnitType>,
         available: bool,
     ) {
         let unit_type = sud.get_unit_type();
 
-        let Some(matching_service_units) = service_units_by_type.get(&unit_type) else {
+        let Some(sdv_identifiers) = sdv_identifiers_by_type.get(&unit_type) else {
             if multipub_types.contains(&unit_type) {
                 self.notify(availability_notifiers, sud, available).await;
             } else {
@@ -135,9 +134,15 @@ impl SdvCommsContext {
         let registered_service_unit_name = unit_identifier.get_unit_name();
         let registered_service_fqin = sud.get_service_bundle_identity().get_fqin().clone();
 
-        if matching_service_units.iter().any(|service_unit_id| {
-            service_unit_id.service_unit_name == registered_service_unit_name
-                && service_unit_id.service_fqin.matches(&registered_service_fqin)
+        if sdv_identifiers.iter().any(|sdv_identifier| match sdv_identifier {
+            SdvIdentifier::ServiceUnitInfo { service_unit_id } => {
+                service_unit_id.service_unit_name == registered_service_unit_name
+                    && service_unit_id.service_fqin.matches(&registered_service_fqin)
+            }
+            SdvIdentifier::SoaInfo { soa_identifier: _ } => {
+                false
+                // TODO: b/487204223 - implement SOA logic in SOME/IP broker
+            }
         }) {
             self.notify(availability_notifiers, sud, available).await;
         }
@@ -163,25 +168,26 @@ impl ISdvCommsContext for SdvCommsContext {
 
     async fn listen_for_unit_type_availability_changes(
         &self,
-        service_unit_infos: Vec<SdvServiceUnitInfo>,
+        service_unit_infos: Vec<(SdvIdentifier, UnitType)>,
         multipub_types: Vec<UnitType>,
         availability_notifiers: Vec<Box<dyn IAvailabilityNotifier>>,
     ) {
         let service_discovery_manager = ServiceDiscoveryManager::new(self.get_context().await);
-        let mut service_units_by_type = HashMap::new();
-        for service_unit_info in service_unit_infos {
-            let service_unit_id = service_unit_info.service_unit_id.clone();
-            service_units_by_type
-                .entry(service_unit_info.unit_type)
-                .and_modify(|service_units: &mut Vec<SdvServiceUnitId>| {
-                    service_units.push(service_unit_info.service_unit_id)
+
+        let mut sdv_identifiers_by_type = HashMap::new();
+        for (sdv_identifier, unit_type) in service_unit_infos {
+            let identifier_clone = sdv_identifier.clone();
+            sdv_identifiers_by_type
+                .entry(unit_type)
+                .and_modify(|sdv_identifiers: &mut Vec<SdvIdentifier>| {
+                    sdv_identifiers.push(identifier_clone)
                 })
-                .or_insert(vec![service_unit_id]);
+                .or_insert(vec![sdv_identifier]);
         }
         let multipub_types_set = HashSet::from_iter(multipub_types);
 
         let mut stream_map = StreamMap::new();
-        for unit_type in service_units_by_type.keys() {
+        for unit_type in sdv_identifiers_by_type.keys() {
             if let Ok(unit_type_stream) =
                 service_discovery_manager.subscribe_service_unit_change_by_type(unit_type).await
             {
@@ -210,7 +216,7 @@ impl ISdvCommsContext for SdvCommsContext {
                     self.trigger_availability_notifiers(
                         sud,
                         &availability_notifiers,
-                        &service_units_by_type,
+                        &sdv_identifiers_by_type,
                         &multipub_types_set,
                         true,
                     )
@@ -220,7 +226,7 @@ impl ISdvCommsContext for SdvCommsContext {
                     self.trigger_availability_notifiers(
                         sud,
                         &availability_notifiers,
-                        &service_units_by_type,
+                        &sdv_identifiers_by_type,
                         &multipub_types_set,
                         false,
                     )

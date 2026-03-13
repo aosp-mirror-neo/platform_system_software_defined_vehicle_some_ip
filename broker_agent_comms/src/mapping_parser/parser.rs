@@ -39,7 +39,6 @@ use crate::mapping_parser::someip_parser::SomeIpServiceMappingParser;
 
 use crate::agent::protocol_mapping::ProtocolMapping;
 use crate::agent::protocol_mapping::SdvServiceUnitId;
-use crate::agent::protocol_mapping::SdvServiceUnitInfo;
 use crate::agent::protocol_mapping::ServiceFqinInternal;
 
 #[automock]
@@ -189,10 +188,9 @@ pub(crate) fn proto_enum_to_internal_enum(
     }
 }
 
-pub(crate) fn create_sdv_service_unit_info(
+pub(crate) fn create_sdv_service_unit_id(
     service_unit: &VsidlServiceUnitId,
-    unit_type: &UnitType,
-) -> Option<SdvServiceUnitInfo> {
+) -> Option<SdvServiceUnitId> {
     let service_fqin = ServiceFqinInternal {
         sdv_vm_name: service_unit.vm_name.clone(),
         sdv_package_name: service_unit.package_name.clone(),
@@ -200,12 +198,8 @@ pub(crate) fn create_sdv_service_unit_info(
         service_instance_name: service_unit.service_instance_name.clone(),
     };
 
-    let service_unit_id = SdvServiceUnitId {
-        service_fqin,
-        service_unit_name: service_unit.service_unit_name.clone(),
-    };
-
-    SdvServiceUnitInfo { service_unit_id, unit_type: unit_type.clone() }.into()
+    SdvServiceUnitId { service_fqin, service_unit_name: service_unit.service_unit_name.clone() }
+        .into()
 }
 
 pub(crate) fn create_someip_service(
@@ -302,19 +296,6 @@ mod tests {
         }
     }
 
-    fn create_test_sdv_unit_type(
-        pkg: &str,
-        bundle: &str,
-        type_name: &str,
-    ) -> sdv_comms::sd::UnitType {
-        sdv_comms::sd::UnitType::builder()
-            .set_sdv_package_name(pkg)
-            .set_service_bundle_name(bundle)
-            .set_unit_type_name(type_name)
-            .build()
-            .unwrap()
-    }
-
     #[test]
     fn test_create_someip_service_valid() {
         let service = create_someip_service(1, 2, 3, 4);
@@ -345,7 +326,7 @@ mod tests {
     }
 
     #[test]
-    fn test_create_sdv_service_unit_info_valid() {
+    fn test_create_sdv_service_unit_id_valid() {
         let vsidl_suid = VsidlServiceUnitId {
             vm_name: Some("vm1".to_string()),
             package_name: "com.example".to_string(),
@@ -354,21 +335,16 @@ mod tests {
             service_unit_name: "Unit1".to_string(),
             ..Default::default()
         };
-        let unit_type = create_test_sdv_unit_type("com.example", "MyBundle", "MyType");
 
-        let info = create_sdv_service_unit_info(&vsidl_suid, &unit_type);
+        let info = create_sdv_service_unit_id(&vsidl_suid);
         assert!(info.is_some());
         let info = info.unwrap();
 
-        assert_eq!(info.service_unit_id.service_fqin.sdv_vm_name, Some("vm1".to_string()));
-        assert_eq!(info.service_unit_id.service_fqin.sdv_package_name, "com.example");
-        assert_eq!(info.service_unit_id.service_fqin.service_bundle_name, "MyBundle");
-        assert_eq!(
-            info.service_unit_id.service_fqin.service_instance_name,
-            Some("instance1".to_string())
-        );
-        assert_eq!(info.service_unit_id.service_unit_name, "Unit1");
-        assert_eq!(info.unit_type, unit_type);
+        assert_eq!(info.service_fqin.sdv_vm_name, Some("vm1".to_string()));
+        assert_eq!(info.service_fqin.sdv_package_name, "com.example");
+        assert_eq!(info.service_fqin.service_bundle_name, "MyBundle");
+        assert_eq!(info.service_fqin.service_instance_name, Some("instance1".to_string()));
+        assert_eq!(info.service_unit_name, "Unit1");
     }
 
     #[test]
