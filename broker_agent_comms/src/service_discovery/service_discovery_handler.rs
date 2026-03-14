@@ -19,7 +19,7 @@ use std::sync::Arc;
 
 use sdv_comms::sd::UnitType;
 
-use crate::agent::protocol_mapping::SdvServiceUnitInfo;
+use crate::agent::protocol_mapping::SdvIdentifier;
 use crate::agent::protocol_mapping::SomeIpServiceInstanceInfo;
 use crate::agent::IAvailabilityNotifier;
 use crate::comms::ISdvCommsContext;
@@ -29,7 +29,7 @@ use crate::service_discovery::AvailabilityCallback;
 #[automock]
 #[async_trait]
 pub(crate) trait IServiceDiscoveryHandler: Send + Sync {
-    fn add_sdv_handle(&mut self, sdv_handle: SdvServiceUnitInfo);
+    fn add_sdv_handle(&mut self, sdv_identifier: SdvIdentifier, unit_type: UnitType);
     fn add_sdv_multipub_handle(&mut self, unit_type: UnitType);
     fn add_someip_handle(&mut self, someip_handle: SomeIpServiceInstanceInfo);
     fn create_availability_callback(
@@ -45,7 +45,7 @@ pub(crate) trait IServiceDiscoveryHandler: Send + Sync {
 
 pub(crate) struct ServiceDiscoveryHandler {
     sdv_comms: Arc<dyn ISdvCommsContext>,
-    sdv_service_units: Vec<SdvServiceUnitInfo>,
+    sdv_service_units: Vec<(SdvIdentifier, UnitType)>,
     sdv_multipub_types: Vec<UnitType>,
     someip_service_instances: Vec<SomeIpServiceInstanceInfo>,
 }
@@ -63,8 +63,8 @@ impl ServiceDiscoveryHandler {
 
 #[async_trait]
 impl IServiceDiscoveryHandler for ServiceDiscoveryHandler {
-    fn add_sdv_handle(&mut self, sdv_handle: SdvServiceUnitInfo) {
-        self.sdv_service_units.push(sdv_handle);
+    fn add_sdv_handle(&mut self, sdv_identifier: SdvIdentifier, unit_type: UnitType) {
+        self.sdv_service_units.push((sdv_identifier, unit_type));
     }
 
     fn add_sdv_multipub_handle(&mut self, unit_type: UnitType) {
@@ -115,8 +115,8 @@ mod tests {
     use someip_config::broker_params::SdMinorVersionMode;
     use std::sync::Arc;
 
+    use crate::agent::protocol_mapping::SdvIdentifier;
     use crate::agent::protocol_mapping::SdvServiceUnitId;
-    use crate::agent::protocol_mapping::SdvServiceUnitInfo;
     use crate::agent::protocol_mapping::ServiceFqinInternal;
     use crate::agent::protocol_mapping::SomeIpServiceInstanceInfo;
     use crate::agent::MockIAvailabilityNotifier;
@@ -152,8 +152,9 @@ mod tests {
         };
 
         let service_unit_id = SdvServiceUnitId { service_fqin, service_unit_name };
-        let sdv_handle = SdvServiceUnitInfo { service_unit_id, unit_type };
+        let sdv_handle = SdvIdentifier::ServiceUnitInfo { service_unit_id };
         let sdv_handle_clone = sdv_handle.clone();
+        let unit_type_clone = unit_type.clone();
 
         mock_comms
             .expect_listen_for_unit_type_availability_changes()
@@ -161,14 +162,14 @@ mod tests {
                 multipub_types.is_empty()
                     && service_units.len() == 1
                     && notifiers.len() == 1
-                    && service_units[0] == sdv_handle_clone
+                    && service_units[0] == (sdv_handle_clone.clone(), unit_type_clone.clone())
             })
             .times(1)
             .return_const(());
 
         let mut discovery_handler = ServiceDiscoveryHandler::new(Arc::new(mock_comms));
 
-        discovery_handler.add_sdv_handle(sdv_handle);
+        discovery_handler.add_sdv_handle(sdv_handle, unit_type);
         discovery_handler
             .start(
                 vec![Box::new(mock_availability_notifier)],

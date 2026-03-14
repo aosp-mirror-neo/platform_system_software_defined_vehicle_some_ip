@@ -26,16 +26,15 @@ use vsidl_v1::someip::some_ip_mapping::sdv_type_mapping::Interface_type as SdvIn
 use vsidl_v1::someip::some_ip_mapping::sdv_type_mapping::RpcInterface as SdvRpcInterface;
 use vsidl_v1::someip::some_ip_mapping::sdv_type_mapping::SomeIpFFMethod;
 use vsidl_v1::someip::some_ip_mapping::sdv_type_mapping::Topic;
-
 use vsidl_v1::someip::some_ip_mapping::SdvTypeMapping;
 
 use crate::agent::protocol_mapping::SdvMultipubMapping;
-use crate::mapping_parser::parser::{create_sdv_service_unit_info, create_someip_service};
+use crate::mapping_parser::parser::{create_sdv_service_unit_id, create_someip_service};
 use crate::mapping_parser::type_parser::TypeParser;
 
 use crate::agent::protocol_mapping::{
-    ProtocolMapping, RpcMethodMappingInfo, SdvServiceUnitInterface, SdvServiceUnitMapping,
-    SdvTopicMappingInfo, SomeIpMethod, SomeIpTypeMapping, TypeMapping,
+    ProtocolMapping, RpcMethodMappingInfo, SdvIdentifier, SdvServiceUnitInterface,
+    SdvServiceUnitMapping, SdvTopicMappingInfo, SomeIpMethod, SomeIpTypeMapping, TypeMapping,
 };
 
 pub(crate) struct SdvTypeMappingParser {
@@ -65,13 +64,7 @@ impl SdvTypeMappingParser {
             return;
         };
 
-        let Some(ref implementation) = sdv_type_mapping.interface_type else {
-            error!(
-                "Error processing a SDV Type mapping, missing interface_type for unit type {unit_type:?}"
-            );
-            return;
-        };
-        let Some(mut someip_service_instance_info) = create_someip_service(
+        let Some(someip_service_instance_info) = create_someip_service(
             sdv_type_mapping.someip_service_id,
             0,
             sdv_type_mapping.version_major,
@@ -81,12 +74,42 @@ impl SdvTypeMappingParser {
             error!("Error processing a SOME/IP service instance");
             return;
         };
+
+        if let protobuf::MessageField(Some(ref _service_oriented_mapping)) =
+            sdv_type_mapping.service_oriented_mapping
+        {
+            // TODO: b/487204223 - implement SOA logic in SOME/IP broker
+        } else {
+            self.process_service_unit_mapping(
+                &unit_type,
+                sdv_type_mapping,
+                someip_service_instance_info,
+                type_mapping,
+                protocol_mapping,
+            );
+        }
+    }
+
+    fn process_service_unit_mapping(
+        &self,
+        unit_type: &UnitType,
+        sdv_type_mapping: &SdvTypeMapping,
+        mut someip_service_instance_info: SomeIpService,
+        type_mapping: &mut TypeMapping,
+        protocol_mapping: &mut ProtocolMapping,
+    ) {
+        let Some(ref implementation) = sdv_type_mapping.interface_type else {
+            error!(
+                "Error processing a SDV Type mapping (Type: Service Unit), missing interface_type for unit type {unit_type:?}"
+            );
+            return;
+        };
         let processed_implementation = match implementation {
             SdvInterfaceType::OfferedInterface(rpc_interface) => {
-                self.process_sdv_rpc(&unit_type, rpc_interface, type_mapping).into()
+                self.process_sdv_rpc(unit_type, rpc_interface, type_mapping).into()
             }
             SdvInterfaceType::OfferedTopic(topic) => self.process_sdv_topic(
-                &unit_type,
+                unit_type,
                 topic,
                 someip_service_instance_info,
                 protocol_mapping,
@@ -112,8 +135,8 @@ impl SdvTypeMappingParser {
             };
             someip_service_instance_info.instance_id = instance_id;
 
-            let Some(service_unit_info) =
-                create_sdv_service_unit_info(&service_unit_mapping.service_unit_id, &unit_type)
+            let Some(service_unit_id) =
+                create_sdv_service_unit_id(&service_unit_mapping.service_unit_id)
             else {
                 continue;
             };
@@ -126,7 +149,8 @@ impl SdvTypeMappingParser {
                     &service_unit_mapping.fire_and_forget_method,
                 );
                 sdv_service_unit_mappings.push(SdvServiceUnitMapping {
-                    service_unit_info,
+                    sdv_identifier: SdvIdentifier::ServiceUnitInfo { service_unit_id },
+                    unit_type: unit_type.clone(),
                     someip_service_instance_info,
                     service_unit_interface: SdvServiceUnitInterface::TOPIC(
                         SdvTopicMappingInfo::FireAndForgetMapping { ff_mapping },
@@ -134,7 +158,8 @@ impl SdvTypeMappingParser {
                 });
             } else {
                 sdv_service_unit_mappings.push(SdvServiceUnitMapping {
-                    service_unit_info,
+                    sdv_identifier: SdvIdentifier::ServiceUnitInfo { service_unit_id },
+                    unit_type: unit_type.clone(),
                     someip_service_instance_info,
                     service_unit_interface: service_unit_interface.clone(),
                 });
@@ -450,11 +475,13 @@ mod tests {
 
         assert_eq!(sdv_service_unit_mappings.len(), 1);
 
-        assert_eq!(
-            sdv_service_unit_mappings[0].service_unit_info.service_unit_id,
-            sdv_service_unit_id
-        );
-        assert_eq!(sdv_service_unit_mappings[0].service_unit_info.unit_type, unit_type);
+        let SdvIdentifier::ServiceUnitInfo { ref service_unit_id } =
+            sdv_service_unit_mappings[0].sdv_identifier
+        else {
+            panic!("Unexpected identifier type")
+        };
+        assert_eq!(*service_unit_id, sdv_service_unit_id);
+        assert_eq!(sdv_service_unit_mappings[0].unit_type, unit_type);
 
         assert_eq!(
             sdv_service_unit_mappings[0].someip_service_instance_info,
@@ -524,12 +551,13 @@ mod tests {
         let sdv_service_unit_mappings = protocol_mapping.sdv_service_units;
 
         assert_eq!(sdv_service_unit_mappings.len(), 1);
-
-        assert_eq!(
-            sdv_service_unit_mappings[0].service_unit_info.service_unit_id,
-            sdv_service_unit_id
-        );
-        assert_eq!(sdv_service_unit_mappings[0].service_unit_info.unit_type, unit_type);
+        let SdvIdentifier::ServiceUnitInfo { ref service_unit_id } =
+            sdv_service_unit_mappings[0].sdv_identifier
+        else {
+            panic!("Unexpected identifier type")
+        };
+        assert_eq!(*service_unit_id, sdv_service_unit_id);
+        assert_eq!(sdv_service_unit_mappings[0].unit_type, unit_type);
 
         assert_eq!(
             sdv_service_unit_mappings[0].someip_service_instance_info,
@@ -730,19 +758,26 @@ mod tests {
             1,
             "Expected one SdvServiceUnitMapping"
         );
-        let mapped_unit = &protocol_mapping.sdv_service_units[0];
+        let SdvIdentifier::ServiceUnitInfo { service_unit_id } =
+            &protocol_mapping.sdv_service_units[0].sdv_identifier
+        else {
+            panic!("Unexpected identifier type")
+        };
 
-        assert_eq!(mapped_unit.service_unit_info.service_unit_id, sdv_service_unit_id);
-        assert_eq!(mapped_unit.service_unit_info.unit_type, unit_type);
+        assert_eq!(*service_unit_id, sdv_service_unit_id);
+        assert_eq!(protocol_mapping.sdv_service_units[0].unit_type, unit_type);
 
         let expected_someip_instance_info = SomeIpService {
             service_id: base_someip_service_for_sdv_type.service_id,
             instance_id: sdv_unit_mapping_instance_id,
             version: base_someip_service_for_sdv_type.version,
         };
-        assert_eq!(mapped_unit.someip_service_instance_info, expected_someip_instance_info);
+        assert_eq!(
+            protocol_mapping.sdv_service_units[0].someip_service_instance_info,
+            expected_someip_instance_info
+        );
 
-        match &mapped_unit.service_unit_interface {
+        match &protocol_mapping.sdv_service_units[0].service_unit_interface {
             SdvServiceUnitInterface::TOPIC(SdvTopicMappingInfo::FireAndForgetMapping {
                 ff_mapping,
             }) => {
