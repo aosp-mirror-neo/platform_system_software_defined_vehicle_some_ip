@@ -19,6 +19,7 @@ use std::time::SystemTime;
 use anyhow::bail;
 use async_trait::async_trait;
 use dashmap::DashMap;
+use heck::ToKebabCase;
 use log::warn;
 use mockall::automock;
 use tokio::sync::Mutex;
@@ -945,10 +946,33 @@ impl PubSubHandler {
             };
             publisher_unit_metadata
                 .set_message_size(compute_message_length_including_header(message_size));
-            publisher_unit_metadata.set_message_count(message_count);
             publisher_unit_metadata.set_topic(&broker_service_unit.service_unit_name);
+            if let Some(pub_metadata) = &broker_service_unit.pub_metadata {
+                publisher_unit_metadata.set_message_count(pub_metadata.capacity);
+            } else if message_count != 0 {
+                publisher_unit_metadata.set_message_count(message_count);
+            } else {
+                return Err(anyhow::Error::msg(format!(
+                    "Couldn't get publication capacity for {}",
+                    broker_service_unit.service_unit_name
+                )));
+            }
 
-            unit_registration_args.set_unit_name(&broker_service_unit.service_unit_name);
+            // if pub_metadata is not set, than it's a legacy input and service_unit_name
+            // matches service_unit_name. Otherwise, it's SOA input and to enable backward
+            // compatibility service_unit_name is set to <unit-type>-<topic>
+            if let Some(_metadata) = &broker_service_unit.pub_metadata {
+                let unit_name = format!(
+                    "{}-{}-{}",
+                    broker_service_unit.unit_type.get_sdv_package_name(),
+                    broker_service_unit.unit_type.get_unit_type_name(),
+                    broker_service_unit.service_unit_name
+                )
+                .to_kebab_case();
+                unit_registration_args.set_unit_name(&unit_name);
+            } else {
+                unit_registration_args.set_unit_name(&broker_service_unit.service_unit_name);
+            }
             unit_registration_args.set_unit_type(&broker_service_unit.unit_type);
             unit_registration_args
                 .set_unit_metadata(&UnitMetadata::Publisher(publisher_unit_metadata));
@@ -1293,6 +1317,7 @@ mod tests {
         };
         let broker_service_unit = Box::new(BrokerServiceUnit {
             service_unit_name: "unit".to_string(),
+            pub_metadata: None,
             unit_type: unit_type.clone(),
         });
         let event_mapping_info = vec![SomeIpEventMappingInfo {
@@ -1340,7 +1365,11 @@ mod tests {
         let broker_service_units: Vec<BrokerServiceUnit> = (0..3)
             .map(|i| {
                 let service_unit_name = format!("unit{i}");
-                BrokerServiceUnit { service_unit_name, unit_type: unit_type.clone() }
+                BrokerServiceUnit {
+                    service_unit_name,
+                    pub_metadata: None,
+                    unit_type: unit_type.clone(),
+                }
             })
             .collect();
         let event_mapping_info = vec![SomeIpEventMappingInfo {
@@ -1418,6 +1447,7 @@ mod tests {
         let service_unit_name = "test-unit";
         let broker_service_unit = BrokerServiceUnit {
             service_unit_name: service_unit_name.to_string(),
+            pub_metadata: None,
             unit_type: unit_type.clone(),
         };
         let event_mapping_info = vec![SomeIpEventMappingInfo {
@@ -1519,6 +1549,7 @@ mod tests {
         let service_unit_name = "test-unit";
         let broker_service_unit = BrokerServiceUnit {
             service_unit_name: service_unit_name.to_string(),
+            pub_metadata: None,
             unit_type: unit_type.clone(),
         };
         let event_mapping_info = vec![SomeIpEventMappingInfo {
@@ -1581,5 +1612,155 @@ mod tests {
         if let Err(e) = task.await {
             log::error!("Error while awaiting task {e:?}");
         }
+    }
+
+    fn get_message_count_from_unit_metadata(unit_metadata: &UnitMetadata) -> Option<u32> {
+        match unit_metadata {
+            UnitMetadata::Publisher(pub_md) => {
+                // Successfully matched the Publisher variant, now get the message_count.
+                Some(pub_md.get_message_count())
+            }
+            UnitMetadata::Server(_) => None,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_create_sdv_publisher_legacy() {
+        // GIVEN
+        let mut sdv_comms = MockISdvCommsContext::new();
+        let mut translator = MockIBrokerTranslator::new();
+
+        let unit_type = UnitType::builder()
+            .set_sdv_package_name("com.test.package")
+            .set_unit_type_name("TestUnitType")
+            .build()
+            .unwrap();
+
+        let broker_fqin = ServiceFqin::builder()
+            .sdv_vm_name("vm")
+            .sdv_package_name("com.android.sdv.someip")
+            .service_bundle_name("SomeIpBroker")
+            .service_instance_name("default")
+            .build()
+            .unwrap();
+
+        sdv_comms.expect_get_fqin().return_const(broker_fqin.clone());
+        translator.expect_get_publication_size_metadata().returning(|_, _| Ok((128, 1)));
+
+        // Test case 1: No pub_metadata
+        let broker_service_unit1 = BrokerServiceUnit {
+            service_unit_name: "test-service-unit".to_string(),
+            pub_metadata: None,
+            unit_type: unit_type.clone(),
+        };
+
+        sdv_comms
+            .expect_create_publisher()
+            .withf(move |args: &UnitRegistrationArgs| {
+                args.get_unit_name() == "test-service-unit"
+                    && get_message_count_from_unit_metadata(&args.get_unit_metadata())
+                        .expect("Publication should have message count")
+                        == 1
+            })
+            .times(1)
+            .returning(|_| Err(anyhow::Error::msg("Skip publisher creation")));
+
+        let _ = PubSubHandler::create_sdv_publisher(
+            &broker_service_unit1,
+            &(Arc::new(sdv_comms) as Arc<dyn ISdvCommsContext>),
+            &(Arc::new(translator) as Arc<dyn IBrokerTranslator>),
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn test_create_sdv_publisher_soa() {
+        let mut sdv_comms = MockISdvCommsContext::new();
+        let mut translator = MockIBrokerTranslator::new();
+
+        let unit_type = UnitType::builder()
+            .set_sdv_package_name("com.test.package")
+            .set_unit_type_name("TestUnitType")
+            .build()
+            .unwrap();
+
+        let broker_fqin = ServiceFqin::builder()
+            .sdv_vm_name("vm")
+            .sdv_package_name("com.android.sdv.someip")
+            .service_bundle_name("SomeIpBroker")
+            .service_instance_name("default")
+            .build()
+            .unwrap();
+
+        sdv_comms.expect_get_fqin().return_const(broker_fqin.clone());
+        translator.expect_get_publication_size_metadata().returning(|_, _| Ok((128, 1)));
+
+        let broker_service_unit2 = BrokerServiceUnit {
+            service_unit_name: "test-topic".to_string(),
+            pub_metadata: Some(crate::agent::protocol_mapping::Metadata { capacity: 10 }),
+            unit_type: unit_type.clone(),
+        };
+
+        sdv_comms
+            .expect_create_publisher()
+            .withf(move |args: &UnitRegistrationArgs| {
+                args.get_unit_name() == "com-test-package-test-unit-type-test-topic"
+                    && get_message_count_from_unit_metadata(&args.get_unit_metadata())
+                        .expect("Publication should have message count")
+                        == 10
+            })
+            .times(1)
+            .returning(|_| Err(anyhow::Error::msg("Skip publisher creation")));
+
+        let _ = PubSubHandler::create_sdv_publisher(
+            &broker_service_unit2,
+            &(Arc::new(sdv_comms) as Arc<dyn ISdvCommsContext>),
+            &(Arc::new(translator) as Arc<dyn IBrokerTranslator>),
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn test_create_sdv_publisher_invalid() {
+        // GIVEN
+        let mut sdv_comms = MockISdvCommsContext::new();
+        let mut translator = MockIBrokerTranslator::new();
+
+        let unit_type = UnitType::builder()
+            .set_sdv_package_name("com.test.package")
+            .set_unit_type_name("TestUnitType")
+            .build()
+            .unwrap();
+
+        let broker_fqin = ServiceFqin::builder()
+            .sdv_vm_name("vm")
+            .sdv_package_name("com.android.sdv.someip")
+            .service_bundle_name("SomeIpBroker")
+            .service_instance_name("default")
+            .build()
+            .unwrap();
+
+        sdv_comms.expect_get_fqin().return_const(broker_fqin.clone());
+        translator.expect_get_publication_size_metadata().returning(|_, _| Ok((128, 0)));
+
+        let broker_service_unit1 = BrokerServiceUnit {
+            service_unit_name: "test-service-unit".to_string(),
+            pub_metadata: None,
+            unit_type: unit_type.clone(),
+        };
+
+        sdv_comms
+            .expect_create_publisher()
+            .times(0)
+            .returning(|_| Err(anyhow::Error::msg("Publisher created, instead of skipped")));
+
+        let err = PubSubHandler::create_sdv_publisher(
+            &broker_service_unit1,
+            &(Arc::new(sdv_comms) as Arc<dyn ISdvCommsContext>),
+            &(Arc::new(translator) as Arc<dyn IBrokerTranslator>),
+        )
+        .await;
+        let e = err.err().expect("Expected an error, but got Ok");
+        assert!(e.to_string().contains("Couldn't get publication capacity for test-service-unit"));
     }
 }

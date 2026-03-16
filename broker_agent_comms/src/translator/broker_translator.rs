@@ -553,6 +553,7 @@ pub mod tests {
                     event_mapping_type: SomeIpEventMappingType::SIMPLE(Box::new(
                         BrokerServiceUnit {
                             service_unit_name: "sample".to_string(),
+                            pub_metadata: None,
                             unit_type: unit_type.clone(),
                         },
                     )),
@@ -649,6 +650,7 @@ pub mod tests {
                     event_mapping_type: SomeIpEventMappingType::SIMPLE(Box::new(
                         BrokerServiceUnit {
                             service_unit_name: "sample".to_string(),
+                            pub_metadata: None,
                             unit_type: unit_type.clone(),
                         },
                     )),
@@ -987,6 +989,7 @@ pub mod tests {
     ) -> SomeIpEventMappingType {
         SomeIpEventMappingType::SIMPLE(Box::new(BrokerServiceUnit {
             service_unit_name: service_unit_name.to_string(),
+            pub_metadata: None,
             unit_type,
         }))
     }
@@ -1000,6 +1003,7 @@ pub mod tests {
         for (i, field_name_mapping) in field_name_mappings.iter().enumerate() {
             let broker_service_unit = BrokerServiceUnit {
                 service_unit_name: format!("service-unit-{i}"),
+                pub_metadata: None,
                 unit_type: unit_type.clone(),
             };
             group_mappings.push((broker_service_unit, field_name_mapping.clone()));
@@ -1296,6 +1300,7 @@ pub mod tests {
             vec![(
                 BrokerServiceUnit {
                     service_unit_name: "part1".to_string(),
+                    pub_metadata: None,
                     unit_type: unit_type.clone(),
                 },
                 HashMap::from([("field_a".to_string(), "c".to_string())]),
@@ -1443,6 +1448,7 @@ pub mod tests {
                 rpc_infos: vec![SomeIpRpcMappingInfo {
                     broker_service_unit: BrokerServiceUnit {
                         service_unit_name: String::from("su_name"),
+                        pub_metadata: None,
                         unit_type: unit_type.clone(),
                     },
                     rpc_method_infos: vec![RpcMethodMappingInfo {
@@ -1557,6 +1563,7 @@ pub mod tests {
                     event_mapping_type: SomeIpEventMappingType::SIMPLE(Box::new(
                         BrokerServiceUnit {
                             service_unit_name: String::from("sample"),
+                            pub_metadata: None,
                             unit_type: unit_type.clone(),
                         },
                     )),

@@ -203,6 +203,11 @@ pub(crate) struct SdvServiceUnitId {
     pub service_unit_name: String,
 }
 
+#[derive(PartialEq, Clone, Debug)]
+pub(crate) struct Metadata {
+    pub capacity: u32,
+}
+
 // Represents a specific service unit within the SDV communication framework
 // that is being exposed by the SOME/IP broker. (SOME/IP -> [broker] -> SDV )
 // This struct contains the necessary information to register or interact with
@@ -213,6 +218,7 @@ pub(crate) struct BrokerServiceUnit {
     // service_unit_name is set to topic for import of PubSub
     // service_unit_name is set to channel for import of RPC
     pub service_unit_name: String,
+    pub pub_metadata: Option<Metadata>,
     pub unit_type: UnitType,
 }
 

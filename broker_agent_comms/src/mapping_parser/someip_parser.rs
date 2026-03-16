@@ -38,6 +38,7 @@ use crate::mapping_parser::parser::create_someip_service;
 use crate::mapping_parser::type_parser::TypeParser;
 
 use crate::agent::protocol_mapping::BrokerServiceUnit;
+use crate::agent::protocol_mapping::Metadata;
 use crate::agent::protocol_mapping::RpcMethodMappingInfo;
 use crate::agent::protocol_mapping::SomeIpEventMappingInfo;
 use crate::agent::protocol_mapping::SomeIpEventMappingType;
@@ -206,6 +207,7 @@ impl SomeIpServiceMappingParser {
         SomeIpRpcMappingInfo {
             broker_service_unit: BrokerServiceUnit {
                 service_unit_name: channel.to_string(),
+                pub_metadata: None,
                 unit_type,
             },
             rpc_method_infos,
@@ -337,6 +339,12 @@ impl SomeIpServiceMappingParser {
             return None;
         };
 
+        let pub_metadata = if someip_simple_event.capacity > 0 {
+            Some(Metadata { capacity: someip_simple_event.capacity })
+        } else {
+            None
+        };
+
         let message_translation_mode =
             Self::get_message_translation_mode(someip_simple_event.message_translation_mode);
         match TypeParser::parse(&self.someip_config, someip_simple_event.type_definition.as_ref()) {
@@ -349,7 +357,7 @@ impl SomeIpServiceMappingParser {
                     event_id,
                     eventgroup_id,
                     event_mapping_type: SomeIpEventMappingType::SIMPLE(Box::new(
-                        BrokerServiceUnit { service_unit_name, unit_type },
+                        BrokerServiceUnit { service_unit_name, pub_metadata, unit_type },
                     )),
                 }
                 .into()
@@ -393,8 +401,10 @@ impl SomeIpServiceMappingParser {
                 all_parts_parsed = false;
                 break;
             };
+            let pub_metadata =
+                if part.capacity > 0 { Some(Metadata { capacity: part.capacity }) } else { None };
             group_event_infos.push((
-                BrokerServiceUnit { service_unit_name, unit_type },
+                BrokerServiceUnit { service_unit_name, pub_metadata, unit_type },
                 part.field_name_mapping.clone(),
             ));
         }
@@ -526,6 +536,7 @@ mod tests {
         service_unit: u32,
         topic: &str,
     ) -> SomeIpInterfaceType {
+        let capacity = if topic.is_empty() { 0 } else { 10 };
         SomeIpInterfaceType::OfferedEvent(Event {
             group_id: group_id as u32,
             event_id: event_id as u32,
@@ -539,6 +550,7 @@ mod tests {
                 .into(),
                 service_unit,
                 topic: topic.to_string(),
+                capacity,
                 ..Default::default()
             })
             .into(),
@@ -552,10 +564,10 @@ mod tests {
         unit_type_package: &str,
         unit_type_bundle: &str,
         unit_type_name: &str,
-        group_event_infos: Vec<(u32, &str, HashMap<String, String>)>,
+        group_event_infos: Vec<(u32, &str, u32, HashMap<String, String>)>,
     ) -> SomeIpInterfaceType {
         let mut event_part = Vec::new();
-        for (service_unit, topic, field_name_mapping) in group_event_infos {
+        for (service_unit, topic, capacity, field_name_mapping) in group_event_infos {
             event_part.push(GroupEventPart {
                 sdv_unit_type: Some(vsidl_v1::someip::some_ip_mapping::UnitType {
                     package_name: unit_type_package.to_string(),
@@ -566,6 +578,7 @@ mod tests {
                 .into(),
                 service_unit,
                 topic: topic.to_string(),
+                capacity,
                 field_name_mapping,
                 ..Default::default()
             })
@@ -749,6 +762,7 @@ mod tests {
         let bundle = broker_service_unit.unit_type.get_service_bundle_name();
         let typename = broker_service_unit.unit_type.get_unit_type_name();
         assert_eq!(broker_service_unit.service_unit_name, service_unit_name.to_string());
+        assert_eq!(broker_service_unit.pub_metadata, Some(Metadata { capacity: 10 }));
         assert_eq!(
             (package, bundle, typename),
             (unit_type_package, "" /* deprecated */, unit_type_name)
@@ -788,6 +802,7 @@ mod tests {
                 (
                     service_unit_key1,
                     /* topic */ "",
+                    /* capacity */ 0,
                     HashMap::from([
                         ("field1_a".to_string(), "field1".to_string()),
                         ("field2_a".to_string(), "field2".to_string()),
@@ -796,6 +811,7 @@ mod tests {
                 (
                     service_unit_key2,
                     /* topic */ "",
+                    /* capacity */ 0,
                     HashMap::from([
                         ("field1_b".to_string(), "field1".to_string()),
                         ("field2_b".to_string(), "field2".to_string()),
@@ -847,7 +863,8 @@ mod tests {
             );
             let field_names =
                 field_name_mapping.values().map(|a| a.to_string()).collect::<Vec<String>>();
-            assert_that!(field_names, unordered_elements_are!(eq(&"field1"), eq(&"field2"),))
+            assert_that!(field_names, unordered_elements_are!(eq(&"field1"), eq(&"field2"),));
+            assert!(broker_service_unit.pub_metadata.is_none());
         }
     }
 
@@ -869,12 +886,14 @@ mod tests {
     //                  sdv_unit_type: { package_name: "sdv.test_package", ... }
     //                  service_unit: 42
     //                  topic: "test-service-unit1"
+    //                  capacity: 21
     //                  field_name_mapping: { "field1_a": "field1", "field2_a": "field2" }
     //              },
     //              {
     //                  sdv_unit_type: { package_name: "sdv.test_package", ... }
     //                  service_unit: 42
     //                  topic: "test-service-unit2"
+    //                  capacity: 22
     //                  field_name_mapping: { "field1_b": "field1", "field2_b": "field2" }
     //              }
     //          ]
@@ -910,6 +929,7 @@ mod tests {
                 (
                     service_unit_key_not_existing,
                     topic1,
+                    /* capacity */ 21,
                     HashMap::from([
                         ("field1_a".to_string(), "field1".to_string()),
                         ("field2_a".to_string(), "field2".to_string()),
@@ -918,6 +938,7 @@ mod tests {
                 (
                     service_unit_key_not_existing,
                     topic2,
+                    /* capacity */ 22,
                     HashMap::from([
                         ("field1_b".to_string(), "field1".to_string()),
                         ("field2_b".to_string(), "field2".to_string()),
@@ -960,6 +981,7 @@ mod tests {
         assert_eq!(2, group_event_infos.len());
 
         let mut broker_service_units_name = vec![];
+        let mut broker_service_units_capacity = vec![];
         for (broker_service_unit, field_name_mapping) in group_event_infos {
             let package = broker_service_unit.unit_type.get_sdv_package_name();
             let bundle = broker_service_unit.unit_type.get_service_bundle_name();
@@ -969,11 +991,17 @@ mod tests {
                 (unit_type_package, "" /* deprecated */, unit_type_name)
             );
             broker_service_units_name.push(broker_service_unit.service_unit_name.clone());
+            broker_service_units_capacity
+                .push(broker_service_unit.pub_metadata.clone().unwrap().capacity);
             let field_names =
                 field_name_mapping.values().map(|a| a.to_string()).collect::<Vec<String>>();
-            assert_that!(field_names, unordered_elements_are!(eq(&"field1"), eq(&"field2"),))
+            assert_that!(field_names, unordered_elements_are!(eq(&"field1"), eq(&"field2"),));
         }
         assert_that!(broker_service_units_name, unordered_elements_are!(eq(topic1), eq(topic2),));
+        assert_that!(
+            broker_service_units_capacity,
+            unordered_elements_are!(eq(&21u32), eq(&22u32),)
+        );
     }
 
     #[googletest::test]
@@ -1324,7 +1352,7 @@ mod tests {
             "sdv.test",
             "TestBundle",
             "TestUnit",
-            vec![(key, name, HashMap::new())],
+            vec![(key, name, /* capacity */ 30, HashMap::new())],
         );
         someip_service_mapping.instance_impl.push(SomeIpInstanceImplementation {
             interface_type: Some(event),
