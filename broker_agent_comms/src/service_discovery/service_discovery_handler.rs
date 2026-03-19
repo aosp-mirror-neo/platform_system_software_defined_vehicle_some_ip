@@ -241,4 +241,86 @@ mod tests {
 
         discovery_handler.start(Vec::new(), Arc::new(mock_stack)).await;
     }
+
+    #[tokio::test]
+    async fn test_add_sdv_handle_soa_server_registers_for_listen() {
+        let mut mock_comms = MockISdvCommsContext::new();
+        let mut mock_availability_notifier = MockIAvailabilityNotifier::new();
+        mock_availability_notifier
+            .expect_clone_box()
+            .returning(|| Box::new(MockIAvailabilityNotifier::new()));
+
+        let unit_type = UnitType::builder()
+            .set_sdv_package_name("com.test_package")
+            .set_unit_type_name("TestType")
+            .build()
+            .expect("Unable to build unit type");
+
+        let soa_identifier = "my-soa-service".to_string();
+        let sdv_handle = SdvIdentifier::SoaInfo { soa_identifier: soa_identifier.clone() };
+        let sdv_handle_clone = sdv_handle.clone();
+        let unit_type_clone = unit_type.clone();
+
+        mock_comms
+            .expect_listen_for_unit_type_availability_changes()
+            .withf(move |service_units, multipub_types, notifiers| {
+                multipub_types.is_empty()
+                    && service_units.len() == 1
+                    && notifiers.len() == 1
+                    && service_units[0] == (sdv_handle_clone.clone(), unit_type_clone.clone())
+            })
+            .times(1)
+            .return_const(());
+
+        let mut discovery_handler = ServiceDiscoveryHandler::new(Arc::new(mock_comms));
+
+        discovery_handler.add_sdv_handle(sdv_handle, unit_type);
+        discovery_handler
+            .start(
+                vec![Box::new(mock_availability_notifier)],
+                Arc::new(MockISomeIpStackContext::new()),
+            )
+            .await;
+    }
+
+    #[tokio::test]
+    async fn test_add_sdv_handle_soa_publisher_registers_for_listen() {
+        let mut mock_comms = MockISdvCommsContext::new();
+        let mut mock_availability_notifier = MockIAvailabilityNotifier::new();
+        mock_availability_notifier
+            .expect_clone_box()
+            .returning(|| Box::new(MockIAvailabilityNotifier::new()));
+
+        let unit_type = UnitType::builder()
+            .set_sdv_package_name("com.test_package")
+            .set_unit_type_name("TestType")
+            .build()
+            .expect("Unable to build unit type");
+
+        let soa_identifier = "my-soa-topic".to_string();
+        let sdv_handle = SdvIdentifier::SoaInfo { soa_identifier: soa_identifier.clone() };
+        let sdv_handle_clone = sdv_handle.clone();
+        let unit_type_clone = unit_type.clone();
+
+        mock_comms
+            .expect_listen_for_unit_type_availability_changes()
+            .withf(move |service_units, multipub_types, notifiers| {
+                multipub_types.is_empty()
+                    && service_units.len() == 1
+                    && notifiers.len() == 1
+                    && service_units[0] == (sdv_handle_clone.clone(), unit_type_clone.clone())
+            })
+            .times(1)
+            .return_const(());
+
+        let mut discovery_handler = ServiceDiscoveryHandler::new(Arc::new(mock_comms));
+
+        discovery_handler.add_sdv_handle(sdv_handle, unit_type);
+        discovery_handler
+            .start(
+                vec![Box::new(mock_availability_notifier)],
+                Arc::new(MockISomeIpStackContext::new()),
+            )
+            .await;
+    }
 }

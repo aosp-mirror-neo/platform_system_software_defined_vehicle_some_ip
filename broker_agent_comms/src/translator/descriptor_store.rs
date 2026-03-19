@@ -496,6 +496,7 @@ mod tests {
     ) -> SomeIpEventMappingType {
         SomeIpEventMappingType::SIMPLE(Box::new(BrokerServiceUnit {
             service_unit_name: service_unit_name.to_string(),
+            pub_metadata: None,
             unit_type,
         }))
     }
@@ -507,7 +508,10 @@ mod tests {
         let service_unit_infos = service_units
             .into_iter()
             .map(|(name, unit_type, field_name_mapping)| {
-                (BrokerServiceUnit { service_unit_name: name, unit_type }, field_name_mapping)
+                (
+                    BrokerServiceUnit { service_unit_name: name, pub_metadata: None, unit_type },
+                    field_name_mapping,
+                )
             })
             .collect();
         SomeIpEventMappingType::GROUP(group_event_definition, service_unit_infos)
@@ -926,6 +930,7 @@ mod tests {
         let rpc_info = SomeIpRpcMappingInfo {
             broker_service_unit: BrokerServiceUnit {
                 service_unit_name: "test_unit".to_string(),
+                pub_metadata: None,
                 unit_type: unit_type.clone(),
             },
             rpc_method_infos: vec![RpcMethodMappingInfo {

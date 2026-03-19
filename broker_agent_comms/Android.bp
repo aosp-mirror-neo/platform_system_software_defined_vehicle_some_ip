@@ -25,6 +25,7 @@ rust_defaults {
     ],
     rustlibs: [
         "libanyhow",
+        "libheck",
         "libmockall",
         "libvsidl_v1_proto_rs",
         // Helper library that contains init_logger(), which redirects

@@ -36,6 +36,12 @@ pub(crate) struct PubSubTopicInfo {
     pub sdv_topic_mapping_info: SdvTopicMappingInfo,
 }
 
+#[derive(Debug)]
+pub(crate) enum IdentifierMode {
+    ServiceUnitInfo,
+    Soa,
+}
+
 impl PubSubTopicInfo {
     pub(crate) fn new(
         someip_service: SomeIpService,
@@ -99,6 +105,18 @@ impl From<SomeIpEventMappingInfo> for PubSubEventMappingInfo {
     }
 }
 
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+pub(crate) struct TopicIdentifier {
+    unit_type: UnitType,
+    topic: String,
+}
+
+impl TopicIdentifier {
+    pub(crate) fn new(unit_type: UnitType, topic: String) -> Self {
+        Self { unit_type, topic }
+    }
+}
+
 #[derive(Clone, PartialEq, Debug)]
 pub(crate) enum PubSubEventMappingType {
     SIMPLE(Box<BrokerServiceUnit>),
@@ -126,6 +144,24 @@ pub(crate) struct BrokerMultipubSubscriberInfo {
     // when translating messages
     pub first_publisher_fqin: ServiceFqin,
     // Unit Type corresponding to this publication
+    pub unit_type: UnitType,
+    // Handle to the subscriber created by the broker for this publication
+    pub subscriber: Mutex<Option<Subscriber>>,
+    // Size of the message for this publication
+    pub message_size: usize,
+    // Current count of publishers of this publication
+    pub publisher_count: u32,
+}
+
+pub(crate) struct BrokerSoaSubscriberInfo {
+    // Specifies the action that the broker should take when a message is received from this topic
+    pub subscriber_type: BrokerSubscriberType,
+    // Service FQIN of the first discovered publisher. The VSIDL config belonging to this FQIN will be used
+    // when translating messages
+    pub first_publisher_fqin: ServiceFqin,
+    // Topic name corresponding to this publication
+    pub topic_name: String,
+    // Unit type corresponding to this publication
     pub unit_type: UnitType,
     // Handle to the subscriber created by the broker for this publication
     pub subscriber: Mutex<Option<Subscriber>>,
@@ -181,6 +217,7 @@ impl SomeIpEventSubscriberInfo {
 pub(crate) enum PollableSubscriber<'a> {
     Single(&'a BrokerSubscriberInfo),
     MultiPub(&'a BrokerMultipubSubscriberInfo),
+    Soa(&'a BrokerSoaSubscriberInfo),
 }
 
 impl PollableSubscriber<'_> {
@@ -188,6 +225,7 @@ impl PollableSubscriber<'_> {
         match self {
             PollableSubscriber::Single(info) => info.message_size,
             PollableSubscriber::MultiPub(info) => info.message_size,
+            PollableSubscriber::Soa(info) => info.message_size,
         }
     }
 
@@ -195,6 +233,7 @@ impl PollableSubscriber<'_> {
         match self {
             PollableSubscriber::Single(info) => info.service_unit_definition.get_unit_type(),
             PollableSubscriber::MultiPub(info) => info.unit_type.clone(),
+            PollableSubscriber::Soa(info) => info.unit_type.clone(),
         }
     }
 
@@ -204,6 +243,7 @@ impl PollableSubscriber<'_> {
                 info.service_unit_definition.get_service_bundle_identity().get_fqin().clone()
             }
             PollableSubscriber::MultiPub(info) => info.first_publisher_fqin.clone(),
+            PollableSubscriber::Soa(info) => info.first_publisher_fqin.clone(),
         }
     }
 
@@ -211,6 +251,7 @@ impl PollableSubscriber<'_> {
         match self {
             PollableSubscriber::Single(info) => info.subscriber_type.clone(),
             PollableSubscriber::MultiPub(info) => BrokerSubscriberType::SIMPLE(info.someip_event),
+            PollableSubscriber::Soa(info) => info.subscriber_type.clone(),
         }
     }
 }

@@ -345,6 +345,7 @@ mod tests {
             2,
             SomeIpEventMappingType::SIMPLE(Box::new(BrokerServiceUnit {
                 service_unit_name: "test_service_name".to_string(),
+                pub_metadata: None,
                 unit_type: UnitType::builder()
                     .set_sdv_package_name("com.test.package")
                     .set_service_bundle_name("TestBundle")
@@ -433,6 +434,7 @@ mod tests {
         };
         let broker_service_unit = BrokerServiceUnit {
             service_unit_name: "service_unit_name".to_string(),
+            pub_metadata: None,
             unit_type: sdv_service_unit_mapping.unit_type.clone(),
         };
 
@@ -511,6 +513,7 @@ mod tests {
 
         let broker_service_unit = BrokerServiceUnit {
             service_unit_name: "service_unit_name".to_string(),
+            pub_metadata: None,
             unit_type: sdv_service_unit_mapping.unit_type.clone(),
         };
 
@@ -614,6 +617,7 @@ mod tests {
             2,
             SomeIpEventMappingType::SIMPLE(Box::new(BrokerServiceUnit {
                 service_unit_name: soa_identifier.to_string(),
+                pub_metadata: None,
                 unit_type: UnitType::builder()
                     .set_sdv_package_name("com.test.package")
                     .set_service_bundle_name("TestBundle")
@@ -708,6 +712,7 @@ mod tests {
         };
         let broker_service_unit = BrokerServiceUnit {
             service_unit_name: soa_identifier.clone(),
+            pub_metadata: None,
             unit_type: sdv_service_unit_mapping.unit_type.clone(),
         };
 
@@ -786,6 +791,7 @@ mod tests {
 
         let broker_service_unit = BrokerServiceUnit {
             service_unit_name: soa_identifier.clone(),
+            pub_metadata: None,
             unit_type: sdv_service_unit_mapping.unit_type.clone(),
         };
 

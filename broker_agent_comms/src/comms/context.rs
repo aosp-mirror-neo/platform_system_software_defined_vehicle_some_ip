@@ -30,6 +30,7 @@ use sdv_comms::rpc::UnaryRpcMethod;
 use sdv_comms::sd::ServiceDiscoveryManager;
 use sdv_comms::sd::ServiceUnitChangeEvent;
 use sdv_comms::sd::ServiceUnitDefinition;
+use sdv_comms::sd::UnitMetadata;
 use sdv_comms::sd::UnitType;
 use sdv_comms::ContextRef;
 
@@ -69,6 +70,12 @@ pub(crate) trait ISdvCommsContext: Sync + Send {
     ) -> anyhow::Result<Subscriber>;
 
     async fn create_multipub_subscriber(&self, unit_type: &UnitType) -> anyhow::Result<Subscriber>;
+
+    async fn create_soa_subscriber(
+        &self,
+        unit_type: &UnitType,
+        topic: &str,
+    ) -> anyhow::Result<Subscriber>;
 
     async fn create_server(
         &self,
@@ -131,6 +138,7 @@ impl SdvCommsContext {
         };
 
         let unit_identifier = sud.get_unit_identifier();
+        let unit_metadata = sud.get_unit_metadata();
         let registered_service_unit_name = unit_identifier.get_unit_name();
         let registered_service_fqin = sud.get_service_bundle_identity().get_fqin().clone();
 
@@ -139,10 +147,12 @@ impl SdvCommsContext {
                 service_unit_id.service_unit_name == registered_service_unit_name
                     && service_unit_id.service_fqin.matches(&registered_service_fqin)
             }
-            SdvIdentifier::SoaInfo { soa_identifier: _ } => {
-                false
-                // TODO: b/487204223 - implement SOA logic in SOME/IP broker
-            }
+            SdvIdentifier::SoaInfo { soa_identifier } => match &unit_metadata {
+                UnitMetadata::Server(_) => registered_service_unit_name == soa_identifier,
+                UnitMetadata::Publisher(publisher_unit_metadata) => {
+                    publisher_unit_metadata.get_topic() == *soa_identifier
+                }
+            },
         }) {
             self.notify(availability_notifiers, sud, available).await;
         }
@@ -173,7 +183,6 @@ impl ISdvCommsContext for SdvCommsContext {
         availability_notifiers: Vec<Box<dyn IAvailabilityNotifier>>,
     ) {
         let service_discovery_manager = ServiceDiscoveryManager::new(self.get_context().await);
-
         let mut sdv_identifiers_by_type = HashMap::new();
         for (sdv_identifier, unit_type) in service_unit_infos {
             let identifier_clone = sdv_identifier.clone();
@@ -262,6 +271,26 @@ impl ISdvCommsContext for SdvCommsContext {
         .map_err(|e| {
             anyhow::anyhow!(
                 "Failed to create subscriber for multipub unit type {}: {e:?}",
+                unit_type
+            )
+        })
+    }
+
+    async fn create_soa_subscriber(
+        &self,
+        unit_type: &UnitType,
+        topic: &str,
+    ) -> anyhow::Result<Subscriber> {
+        Subscriber::create_for_topic(
+            self.get_context().await,
+            unit_type,
+            topic,
+            SubscriberOptions { fetch_last_message: true },
+        )
+        .await
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to create subscriber for topic {topic} unit type {}: {e:?}",
                 unit_type
             )
         })
