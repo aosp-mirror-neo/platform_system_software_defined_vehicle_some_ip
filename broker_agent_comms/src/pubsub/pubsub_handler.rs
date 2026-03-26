@@ -19,7 +19,6 @@ use std::time::SystemTime;
 use anyhow::bail;
 use async_trait::async_trait;
 use dashmap::DashMap;
-use heck::ToKebabCase;
 use log::warn;
 use mockall::automock;
 use tokio::sync::Mutex;
@@ -946,8 +945,8 @@ impl PubSubHandler {
             };
             publisher_unit_metadata
                 .set_message_size(compute_message_length_including_header(message_size));
-            publisher_unit_metadata.set_topic(&broker_service_unit.service_unit_name);
             if let Some(pub_metadata) = &broker_service_unit.pub_metadata {
+                publisher_unit_metadata.set_topic(&pub_metadata.topic_name);
                 publisher_unit_metadata.set_message_count(pub_metadata.capacity);
             } else if message_count != 0 {
                 publisher_unit_metadata.set_message_count(message_count);
@@ -958,21 +957,7 @@ impl PubSubHandler {
                 )));
             }
 
-            // if pub_metadata is not set, than it's a legacy input and service_unit_name
-            // matches service_unit_name. Otherwise, it's SOA input and to enable backward
-            // compatibility service_unit_name is set to <unit-type>-<topic>
-            if let Some(_metadata) = &broker_service_unit.pub_metadata {
-                let unit_name = format!(
-                    "{}-{}-{}",
-                    broker_service_unit.unit_type.get_sdv_package_name(),
-                    broker_service_unit.unit_type.get_unit_type_name(),
-                    broker_service_unit.service_unit_name
-                )
-                .to_kebab_case();
-                unit_registration_args.set_unit_name(&unit_name);
-            } else {
-                unit_registration_args.set_unit_name(&broker_service_unit.service_unit_name);
-            }
+            unit_registration_args.set_unit_name(&broker_service_unit.service_unit_name);
             unit_registration_args.set_unit_type(&broker_service_unit.unit_type);
             unit_registration_args
                 .set_unit_metadata(&UnitMetadata::Publisher(publisher_unit_metadata));
@@ -1624,6 +1609,16 @@ mod tests {
         }
     }
 
+    fn get_topic_name_from_unit_metadata(unit_metadata: &UnitMetadata) -> Option<String> {
+        match unit_metadata {
+            UnitMetadata::Publisher(pub_md) => {
+                // Successfully matched the Publisher variant, now get the topic_name.
+                Some(pub_md.get_topic())
+            }
+            UnitMetadata::Server(_) => None,
+        }
+    }
+
     #[tokio::test]
     async fn test_create_sdv_publisher_legacy() {
         // GIVEN
@@ -1696,18 +1691,24 @@ mod tests {
         translator.expect_get_publication_size_metadata().returning(|_, _| Ok((128, 1)));
 
         let broker_service_unit2 = BrokerServiceUnit {
-            service_unit_name: "test-topic".to_string(),
-            pub_metadata: Some(crate::agent::protocol_mapping::Metadata { capacity: 10 }),
+            service_unit_name: "test-unit-name".to_string(),
+            pub_metadata: Some(crate::agent::protocol_mapping::Metadata {
+                topic_name: "test-topic".to_string(),
+                capacity: 10,
+            }),
             unit_type: unit_type.clone(),
         };
 
         sdv_comms
             .expect_create_publisher()
             .withf(move |args: &UnitRegistrationArgs| {
-                args.get_unit_name() == "com-test-package-test-unit-type-test-topic"
+                args.get_unit_name() == "test-unit-name"
                     && get_message_count_from_unit_metadata(&args.get_unit_metadata())
                         .expect("Publication should have message count")
                         == 10
+                    && get_topic_name_from_unit_metadata(&args.get_unit_metadata())
+                        .expect("Publication should have topic name")
+                        == "test-topic"
             })
             .times(1)
             .returning(|_| Err(anyhow::Error::msg("Skip publisher creation")));

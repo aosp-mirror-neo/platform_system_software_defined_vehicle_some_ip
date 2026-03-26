@@ -113,13 +113,8 @@ pub(crate) struct SdvServiceUnitMapping {
 /// inside SdvServiceUnitMapping
 #[derive(PartialEq, Hash, Eq, Clone, Debug)]
 pub(crate) enum SdvIdentifier {
-    ServiceUnitInfo {
-        service_unit_id: SdvServiceUnitId,
-    },
-    #[allow(dead_code)]
-    SoaInfo {
-        soa_identifier: String,
-    },
+    ServiceUnitInfo { service_unit_id: SdvServiceUnitId },
+    SoaInfo { soa_identifier: String },
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -205,6 +200,7 @@ pub(crate) struct SdvServiceUnitId {
 
 #[derive(PartialEq, Clone, Debug)]
 pub(crate) struct Metadata {
+    pub topic_name: String,
     pub capacity: u32,
 }
 
@@ -215,7 +211,6 @@ pub(crate) struct Metadata {
 #[derive(PartialEq, Clone, Debug)]
 pub(crate) struct BrokerServiceUnit {
     // service_unit_name is set to service_unit value in case of legacy
-    // service_unit_name is set to topic for import of PubSub
     // service_unit_name is set to channel for import of RPC
     pub service_unit_name: String,
     pub pub_metadata: Option<Metadata>,
